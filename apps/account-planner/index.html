@@ -2183,6 +2183,266 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     }
   }
 
+  // ── Deal Review Mode ──────────────────────────────────────────────────────────
+  // Single-screen 5-question read-only view for live deal review meetings.
+  // Replaces the stub defined in piece 4.
+
+  function openDealReview() {
+    const acc   = getAccount();
+    const idx   = state.activeTab;
+    const overlay = document.getElementById('dealReview');
+    overlay.innerHTML = '';
+    overlay.classList.remove('hidden');
+
+    // ── Header ──
+    const hdr = h('div', 'dr-header');
+
+    const titleBlock = h('div', '');
+    titleBlock.appendChild(h('div', 'dr-account-name', acc.name || `Account ${idx + 1}`));
+    const meta = h('div', 'dr-meta');
+    meta.textContent = [acc.stage, acc.industry, acc.accountManager].filter(Boolean).join(' · ');
+    titleBlock.appendChild(meta);
+    hdr.appendChild(titleBlock);
+
+    const closeBtn = h('button', 'btn btn-ghost', '✕ Close');
+    closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+    hdr.appendChild(closeBtn);
+    overlay.appendChild(hdr);
+
+    // ── Health bar ──
+    const gaps  = computeGaps(acc);
+    const score = computeScore(acc);
+    const scoreClass = score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
+
+    const healthBar = h('div', '');
+    healthBar.style.cssText = 'display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.25rem;';
+    healthBar.appendChild(h('div', `score-circle ${scoreClass}`, String(score)));
+    if (gaps.length === 0) {
+      healthBar.appendChild(h('span', 'warning-tag green', '✓ Ready for deal review'));
+    } else {
+      gaps.forEach(g => healthBar.appendChild(h('span', `warning-tag ${g.level}`, g.text)));
+    }
+    overlay.appendChild(healthBar);
+
+    // ── 5-question grid ──
+    const grid = h('div', 'dr-grid');
+
+    // ── Q1: What is driving the deal? ──
+    const q1 = h('div', 'dr-card');
+    q1.appendChild(h('h3', '', '1. What is driving the deal?'));
+
+    drField(q1, 'Problem', acc.problem.statement);
+    drField(q1, 'Financial impact', acc.problem.financialImpact);
+    drField(q1, 'Carbon impact', acc.problem.carbonImpact);
+
+    const urgency = [acc.problem.urgencyDriver, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' ');
+    drField(q1, 'Urgency', urgency);
+    drField(q1, '"Do nothing"', acc.problem.doNothing);
+
+    const criteria = acc.problem.criteria.filter(Boolean);
+    if (criteria.length) {
+      drField(q1, 'Decision criteria', criteria.map((c, i) => `${i + 1}. ${c}`).join('\n'));
+    }
+    grid.appendChild(q1);
+
+    // ── Q2: Who decides? ──
+    const q2 = h('div', 'dr-card');
+    q2.appendChild(h('h3', '', '2. Who decides?'));
+
+    if (acc.stakeholders.length === 0) {
+      q2.appendChild(h('p', 'empty-state', 'No stakeholders mapped'));
+    } else {
+      const tbl = document.createElement('table');
+      tbl.className = 'dr-table';
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>Name</th><th>Role</th><th>Power</th><th>Stance</th></tr>';
+      tbl.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      acc.stakeholders.forEach(s => {
+        const tr = document.createElement('tr');
+        // Colour-code stance
+        const stanceColor = { Supporter: 'var(--green)', Opposed: 'var(--red)', Neutral: 'var(--yellow)', Unknown: 'var(--text-muted)' }[s.stance] || '';
+        tr.innerHTML = `
+          <td style="font-weight:500">${s.name || '—'}${s.title ? `<br><span style="font-size:0.72rem;color:var(--text-muted)">${s.title}</span>` : ''}</td>
+          <td>${s.roleType || '—'}</td>
+          <td>${s.power || '—'}</td>
+          <td style="color:${stanceColor};font-weight:500">${s.stance || '—'}</td>`;
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      q2.appendChild(tbl);
+
+      // WIIFM summary for supporters
+      const supporters = acc.stakeholders.filter(s => s.personalWin && s.stance === 'Supporter');
+      if (supporters.length) {
+        const wiifm = h('div', '');
+        wiifm.style.marginTop = '0.75rem';
+        supporters.forEach(s => {
+          const line = h('div', 'dr-field');
+          line.innerHTML = `<strong>${s.name}:</strong> ${s.personalWin}`;
+          wiifm.appendChild(line);
+        });
+        q2.appendChild(wiifm);
+      }
+    }
+    grid.appendChild(q2);
+
+    // ── Q3: How does it get done? ──
+    const q3 = h('div', 'dr-card');
+    q3.appendChild(h('h3', '', '3. How does it get done?'));
+
+    const route = [acc.process.procurementRoute, acc.process.frameworkName].filter(Boolean).join(' — ');
+    drField(q3, 'Procurement route', route);
+
+    const budget = [acc.process.budgetConfirmed, acc.process.budgetSource].filter(Boolean).join(' — ');
+    drField(q3, 'Budget', budget);
+    drField(q3, 'Expected contract', acc.process.contractDate);
+
+    if (acc.process.approvalStages && acc.process.approvalStages.filter(Boolean).length) {
+      drField(q3, 'Approval stages', acc.process.approvalStages.filter(Boolean).join(' → '));
+    }
+    if (acc.process.keyDeps && acc.process.keyDeps.length) {
+      drField(q3, 'Key dependencies', acc.process.keyDeps.join(', '));
+    }
+
+    // Next 3 upcoming actions
+    const today = new Date();
+    const upcoming = [...acc.actions]
+      .filter(a => a.action && a.status !== 'Complete')
+      .sort((a, b) => new Date(a.dueDate || '9999') - new Date(b.dueDate || '9999'))
+      .slice(0, 3);
+
+    if (upcoming.length) {
+      const actDiv = h('div', '');
+      actDiv.style.marginTop = '0.75rem';
+      const actLbl = h('div', '');
+      actLbl.style.cssText = 'font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.35rem;';
+      actLbl.textContent = 'Next Actions';
+      actDiv.appendChild(actLbl);
+      upcoming.forEach(a => {
+        const overdue = a.dueDate && new Date(a.dueDate) < today;
+        const line = h('div', 'dr-field');
+        line.style.paddingLeft = '0.5rem';
+        line.innerHTML = `• ${a.action} <span style="color:${overdue ? 'var(--red)' : 'var(--text-muted)'}">(${a.dueDate || 'no date'} · ${a.amerescoOwner || '?'})</span>`;
+        actDiv.appendChild(line);
+      });
+      q3.appendChild(actDiv);
+    }
+    grid.appendChild(q3);
+
+    // ── Q4: Why do we win? ──
+    const q4 = h('div', 'dr-card');
+    q4.appendChild(h('h3', '', '4. Why do we win?'));
+
+    if (acc.solution.solutions && acc.solution.solutions.length) {
+      drField(q4, 'Solutions', acc.solution.solutions.join(', '));
+    }
+    const commercial = [acc.solution.commercialModel, acc.solution.dealValue].filter(Boolean).join(' · ');
+    drField(q4, 'Commercial', commercial);
+
+    const financials = [
+      acc.solution.savingsPerYear ? `${acc.solution.savingsPerYear} savings/yr` : '',
+      acc.solution.carbonReduction ? `${acc.solution.carbonReduction} tCO2e` : '',
+      acc.solution.roiPayback || ''
+    ].filter(Boolean).join(' · ');
+    drField(q4, 'Value', financials);
+    drField(q4, 'Our differentiator', acc.competition.differentiator);
+    drField(q4, 'Why we win', acc.competition.whyWeWin);
+
+    const namedCompetitors = acc.competition.competitors.filter(c => c.name);
+    if (namedCompetitors.length) {
+      drField(q4, 'Competitors', namedCompetitors.map(c => `${c.name} (${c.strength || '?'})`).join(', '));
+    }
+    grid.appendChild(q4);
+
+    // ── Q5: What could stop it? (full width) ──
+    const q5 = h('div', 'dr-card full');
+    q5.appendChild(h('h3', '', '5. What could stop it?'));
+
+    if (acc.risks.length === 0 && !acc.competition.whyWeLose) {
+      q5.appendChild(h('p', 'empty-state', 'No risks or loss factors registered'));
+    } else {
+      if (acc.risks.length) {
+        const riskTbl = document.createElement('table');
+        riskTbl.className = 'dr-table';
+        const rt = document.createElement('thead');
+        rt.innerHTML = '<tr><th>Risk</th><th>Category</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th><th>Owner</th></tr>';
+        riskTbl.appendChild(rt);
+        const rb = document.createElement('tbody');
+        acc.risks.forEach(r => {
+          const lColor = r.likelihood === 'High' ? 'var(--red)' : r.likelihood === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+          const iColor = r.impact    === 'High' ? 'var(--red)' : r.impact    === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+          const tr = document.createElement('tr');
+          const critical = r.likelihood === 'High' && r.impact === 'High' && !r.mitigation;
+          if (critical) tr.style.background = 'rgba(231,76,60,0.08)';
+          tr.innerHTML = `
+            <td>${r.description || '—'}</td>
+            <td>${r.category || '—'}</td>
+            <td style="color:${lColor};font-weight:600">${r.likelihood || '—'}</td>
+            <td style="color:${iColor};font-weight:600">${r.impact || '—'}</td>
+            <td>${r.mitigation || '<span style="color:var(--red)">None</span>'}</td>
+            <td>${r.owner || '—'}</td>`;
+          rb.appendChild(tr);
+        });
+        riskTbl.appendChild(rb);
+        q5.appendChild(riskTbl);
+      }
+
+      if (acc.competition.whyWeLose) {
+        const loseDiv = h('div', 'dr-field');
+        loseDiv.style.marginTop = '0.75rem';
+        loseDiv.innerHTML = `<strong>Why we could lose:</strong> ${acc.competition.whyWeLose}`;
+        q5.appendChild(loseDiv);
+      }
+
+      if (acc.competition.riskLevel) {
+        const rlColor = acc.competition.riskLevel === 'High' ? 'var(--red)' : acc.competition.riskLevel === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+        const rlDiv = h('div', 'dr-field');
+        rlDiv.style.marginTop = '0.5rem';
+        rlDiv.innerHTML = `<strong>Competitive risk:</strong> <span style="color:${rlColor};font-weight:600">${acc.competition.riskLevel}</span>`;
+        q5.appendChild(rlDiv);
+      }
+    }
+    grid.appendChild(q5);
+
+    overlay.appendChild(grid);
+
+    // ── Print hint ──
+    const hint = h('p', '');
+    hint.style.cssText = 'margin-top:1.5rem;font-size:0.8rem;color:var(--text-muted);text-align:center;';
+    hint.textContent = 'Use your browser\'s Print / Save as PDF (Ctrl+P) to export this view.';
+    overlay.appendChild(hint);
+
+    // Close on Escape
+    const escHandler = e => {
+      if (e.key === 'Escape') {
+        overlay.classList.add('hidden');
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+  }
+
+  // Helper: adds a labelled field row to a deal-review card
+  function drField(card, labelText, value) {
+    if (!value) return;
+    const d = h('div', 'dr-field');
+    d.innerHTML = `<strong>${labelText}:</strong> `;
+    // preserve newlines for multi-line values (e.g. criteria list)
+    if (value.includes('\n')) {
+      d.innerHTML = `<strong>${labelText}:</strong>`;
+      value.split('\n').forEach(line => {
+        const p = document.createElement('div');
+        p.style.paddingLeft = '0.5rem';
+        p.textContent = line;
+        d.appendChild(p);
+      });
+    } else {
+      d.appendChild(document.createTextNode(value));
+    }
+    card.appendChild(d);
+  }
+
   // Boot
   renderApp();
   console.log('[AccountPlan] Render engine ready');
