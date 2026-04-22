@@ -1676,6 +1676,305 @@
     return wrap;
   }
 
+  // ── Section 7: Competitive Position ──────────────────────────────────────────
+
+  function renderCompetition(acc) {
+    const wrap = h('div', '');
+
+    // 4 competitor cards in a 2×2 grid
+    const compLabel = document.createElement('label');
+    compLabel.textContent = 'Competitors (up to 4)';
+    wrap.appendChild(compLabel);
+
+    const compGrid = h('div', 'competitor-grid mt-sm');
+    for (let ci = 0; ci < 4; ci++) {
+      const c = acc.competition.competitors[ci] || { name: '', strength: '' };
+      const card = h('div', 'competitor-card');
+      card.appendChild(frow(`Competitor ${ci + 1}`,
+        inp('text', c.name,
+          v => { acc.competition.competitors[ci].name = v; saveState(); refreshHealth(); },
+          'Company name')
+      ));
+      card.appendChild(frow('Perceived Strength',
+        sel(RISK_LEVELS, c.strength,
+          v => { acc.competition.competitors[ci].strength = v; saveState(); })
+      ));
+      compGrid.appendChild(card);
+    }
+    wrap.appendChild(compGrid);
+
+    // Narrative fields
+    const g = h('div', 'form-grid cols-1 mt-md');
+    g.appendChild(frow('Why We Win',
+      ta(acc.competition.whyWeWin,
+        v => { acc.competition.whyWeWin = v; saveState(); }, 3,
+        'Our key strengths and advantages in this specific deal…')
+    ));
+    g.appendChild(frow('Why We Could Lose',
+      ta(acc.competition.whyWeLose,
+        v => { acc.competition.whyWeLose = v; saveState(); }, 2,
+        'Honest assessment of our vulnerabilities — what competitors will exploit…')
+    ));
+    g.appendChild(frow('Our Single Differentiator',
+      ta(acc.competition.differentiator,
+        v => { acc.competition.differentiator = v; saveState(); }, 2,
+        'The one thing that makes us the only credible choice for this customer…')
+    ));
+    wrap.appendChild(g);
+
+    // Competitive risk level — chip group
+    const riskWrap = h('div', 'form-row mt-md');
+    const riskLbl = document.createElement('label');
+    riskLbl.textContent = 'Overall Competitive Risk Level';
+    riskWrap.appendChild(riskLbl);
+    riskWrap.appendChild(
+      chipGroup(RISK_LEVELS, acc.competition.riskLevel,
+        v => { acc.competition.riskLevel = v; saveState(); })
+    );
+    wrap.appendChild(riskWrap);
+
+    return wrap;
+  }
+
+  // ── Section 8: Mutual Action Plan ─────────────────────────────────────────────
+
+  function renderActions(acc) {
+    const wrap = h('div', '');
+
+    const addBtn = h('button', 'btn btn-ghost btn-sm', '+ Add Action');
+    addBtn.addEventListener('click', () => {
+      acc.actions.push({
+        action: '', amerescoOwner: '', clientOwner: '',
+        dueDate: '', status: 'Not Started', category: ''
+      });
+      saveState();
+      renderApp();
+    });
+    wrap.appendChild(h('div', 'action-row', addBtn));
+
+    if (acc.actions.length === 0) {
+      wrap.appendChild(h('p', 'empty-state', 'No actions added yet — click + Add Action to begin.'));
+      return wrap;
+    }
+
+    const tableWrap = h('div', 'table-wrap');
+    const table = document.createElement('table');
+    table.className = 'dyn-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th>Action</th>
+      <th>Ameresco Owner</th>
+      <th>Client Owner</th>
+      <th>Due Date</th>
+      <th>Status</th>
+      <th>Category</th>
+      <th></th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    acc.actions.forEach((a, ai) => {
+      const tr = document.createElement('tr');
+
+      // Action description
+      const tdAction = document.createElement('td');
+      tdAction.style.minWidth = '200px';
+      tdAction.appendChild(ta(a.action,
+        v => { a.action = v; saveState(); }, 2, 'Describe the action…'));
+      tr.appendChild(tdAction);
+
+      // Ameresco owner
+      const tdAm = document.createElement('td');
+      tdAm.style.minWidth = '110px';
+      tdAm.appendChild(inp('text', a.amerescoOwner,
+        v => { a.amerescoOwner = v; saveState(); }, 'Name'));
+      tr.appendChild(tdAm);
+
+      // Client owner
+      const tdCl = document.createElement('td');
+      tdCl.style.minWidth = '110px';
+      tdCl.appendChild(inp('text', a.clientOwner,
+        v => { a.clientOwner = v; saveState(); }, 'Name'));
+      tr.appendChild(tdCl);
+
+      // Due date — highlights overdue rows
+      const tdDate = document.createElement('td');
+      const dateInp = inp('date', a.dueDate, v => {
+        a.dueDate = v;
+        saveState();
+        refreshHealth();
+        // Highlight row if overdue
+        const isOverdue = v && new Date(v) < new Date() && a.status !== 'Complete';
+        tr.style.background = isOverdue ? 'rgba(231,76,60,0.07)' : '';
+      });
+      // Apply on initial render too
+      if (a.dueDate && new Date(a.dueDate) < new Date() && a.status !== 'Complete') {
+        tr.style.background = 'rgba(231,76,60,0.07)';
+      }
+      tdDate.appendChild(dateInp);
+      tr.appendChild(tdDate);
+
+      // Status
+      const tdStatus = document.createElement('td');
+      tdStatus.appendChild(sel(ACTION_STATUSES, a.status,
+        v => { a.status = v; saveState(); }));
+      tr.appendChild(tdStatus);
+
+      // Category
+      const tdCat = document.createElement('td');
+      tdCat.appendChild(sel(ACTION_CATS, a.category,
+        v => { a.category = v; saveState(); }));
+      tr.appendChild(tdCat);
+
+      // Delete
+      const tdDel = document.createElement('td');
+      const delBtn = h('button', 'btn btn-danger btn-sm btn-icon', '✕');
+      delBtn.addEventListener('click', () => {
+        acc.actions.splice(ai, 1);
+        saveState();
+        renderApp();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
+  // ── Section 9: Risk Register ──────────────────────────────────────────────────
+
+  function renderRisks(acc) {
+    const wrap = h('div', '');
+
+    const addBtn = h('button', 'btn btn-ghost btn-sm', '+ Add Risk');
+    addBtn.addEventListener('click', () => {
+      acc.risks.push({
+        description: '', category: '',
+        likelihood: 'Medium', impact: 'Medium',
+        mitigation: '', owner: ''
+      });
+      saveState();
+      renderApp();
+    });
+    wrap.appendChild(h('div', 'action-row', addBtn));
+
+    if (acc.risks.length === 0) {
+      wrap.appendChild(h('p', 'empty-state', 'No risks registered yet — click + Add Risk to begin.'));
+      return wrap;
+    }
+
+    const tableWrap = h('div', 'table-wrap');
+    const table = document.createElement('table');
+    table.className = 'dyn-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th>Description</th>
+      <th>Category</th>
+      <th>Likelihood</th>
+      <th>Impact</th>
+      <th>Mitigation</th>
+      <th>Owner</th>
+      <th></th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    acc.risks.forEach((r, ri) => {
+      const tr = document.createElement('tr');
+
+      // Colour the row for High/High unmitigated risks
+      function updateRowHighlight() {
+        const critical = r.likelihood === 'High' && r.impact === 'High' && !r.mitigation;
+        tr.style.background = critical ? 'rgba(231,76,60,0.09)' : '';
+      }
+      updateRowHighlight();
+
+      // Description
+      const tdDesc = document.createElement('td');
+      tdDesc.style.minWidth = '200px';
+      tdDesc.appendChild(ta(r.description,
+        v => { r.description = v; saveState(); }, 2, 'Describe the risk…'));
+      tr.appendChild(tdDesc);
+
+      // Category
+      const tdCat = document.createElement('td');
+      tdCat.appendChild(sel(RISK_CATS, r.category,
+        v => { r.category = v; saveState(); }));
+      tr.appendChild(tdCat);
+
+      // Likelihood — colour-coded
+      const tdLike = document.createElement('td');
+      const likeEl = sel(LIKELIHOOD, r.likelihood, v => {
+        r.likelihood = v;
+        saveState();
+        refreshHealth();
+        updateRowHighlight();
+        likeEl.style.color = v === 'High' ? 'var(--red)' : v === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+      });
+      likeEl.style.color = r.likelihood === 'High' ? 'var(--red)' : r.likelihood === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+      tdLike.appendChild(likeEl);
+      tr.appendChild(tdLike);
+
+      // Impact — colour-coded
+      const tdImp = document.createElement('td');
+      const impEl = sel(IMPACT, r.impact, v => {
+        r.impact = v;
+        saveState();
+        refreshHealth();
+        updateRowHighlight();
+        impEl.style.color = v === 'High' ? 'var(--red)' : v === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+      });
+      impEl.style.color = r.impact === 'High' ? 'var(--red)' : r.impact === 'Medium' ? 'var(--yellow)' : 'var(--green)';
+      tdImp.appendChild(impEl);
+      tr.appendChild(tdImp);
+
+      // Mitigation
+      const tdMit = document.createElement('td');
+      tdMit.style.minWidth = '170px';
+      tdMit.appendChild(ta(r.mitigation, v => {
+        r.mitigation = v;
+        saveState();
+        refreshHealth();
+        updateRowHighlight();
+      }, 2, 'How will this be mitigated?'));
+      tr.appendChild(tdMit);
+
+      // Owner
+      const tdOwner = document.createElement('td');
+      tdOwner.style.minWidth = '100px';
+      tdOwner.appendChild(inp('text', r.owner,
+        v => { r.owner = v; saveState(); }, 'Owner'));
+      tr.appendChild(tdOwner);
+
+      // Delete
+      const tdDel = document.createElement('td');
+      const delBtn = h('button', 'btn btn-danger btn-sm btn-icon', '✕');
+      delBtn.addEventListener('click', () => {
+        acc.risks.splice(ri, 1);
+        saveState();
+        renderApp();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
   // Boot
   renderApp();
   console.log('[AccountPlan] Render engine ready');
