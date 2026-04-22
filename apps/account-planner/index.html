@@ -627,6 +627,71 @@
       main              { padding: 1rem; }
       .header-actions .btn-sm:nth-child(1) { display: none; }
     }
+
+    /* ── SCOTSMAN Qualification ───────────────────────────────────────────── */
+    .scotsman-score-bar {
+      display: flex; align-items: center; gap: 1rem;
+      background: var(--input-bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .scotsman-prog-wrap { flex: 1; min-width: 120px; }
+    .scotsman-prog-bg   { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .scotsman-prog-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+    .scotsman-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .scotsman-table th {
+      background: rgba(26,38,51,0.8); padding: 0.45rem 0.65rem; text-align: left;
+      font-size: 0.68rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border);
+    }
+    .scotsman-table td { padding: 0.5rem 0.65rem; border-bottom: 1px solid rgba(45,63,82,0.5); vertical-align: top; }
+    .scotsman-table tr:last-child td { border-bottom: none; }
+    .scotsman-table textarea { min-height: 46px; font-size: 0.8rem; }
+
+    .scotsman-letter {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(27,111,171,0.15); border: 1px solid rgba(27,111,171,0.35);
+      color: var(--accent); font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700; font-size: 0.95rem; flex-shrink: 0;
+    }
+    .scotsman-criterion { font-weight: 600; font-size: 0.85rem; color: var(--text); display: block; }
+    .scotsman-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; line-height: 1.4; }
+    .scotsman-hint {
+      display: inline-block; font-size: 0.7rem; color: var(--blue-light);
+      background: rgba(27,111,171,0.1); border: 1px solid rgba(27,111,171,0.25);
+      border-radius: 4px; padding: 0.2rem 0.5rem; margin-top: 0.35rem;
+    }
+
+    .tab-qual-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.62rem; font-weight: 700; font-family: 'Barlow Condensed', sans-serif;
+      padding: 0.1rem 0.38rem; border-radius: 20px; margin-left: 0.4rem;
+      vertical-align: middle; line-height: 1.2; border: 1px solid;
+    }
+    .tab-qual-badge.high { background: rgba(39,174,96,0.15);  border-color: rgba(39,174,96,0.4);  color: var(--green); }
+    .tab-qual-badge.med  { background: rgba(243,156,18,0.15); border-color: rgba(243,156,18,0.4); color: var(--yellow); }
+    .tab-qual-badge.low  { background: rgba(231,76,60,0.15);  border-color: rgba(231,76,60,0.4);  color: var(--red); }
+
+    .scotsman-dr-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-top: 0.75rem; }
+    .scotsman-dr-cell {
+      background: var(--input-bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.5rem 0.65rem; text-align: center;
+    }
+    .scotsman-dr-cell .sdc-letter { font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--accent); line-height: 1; }
+    .scotsman-dr-cell .sdc-label  { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.1rem; }
+    .scotsman-dr-cell .sdc-rating { font-size: 0.75rem; font-weight: 600; margin-top: 0.3rem; }
+    .scotsman-dr-cell .sdc-notes  { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.25rem; line-height: 1.35; }
+    .scotsman-dr-cell.strong { border-color: rgba(39,174,96,0.35);  background: rgba(39,174,96,0.07); }
+    .scotsman-dr-cell.partial { border-color: rgba(243,156,18,0.35); background: rgba(243,156,18,0.07); }
+    .scotsman-dr-cell.weak   { border-color: rgba(231,76,60,0.35);  background: rgba(231,76,60,0.07); }
+    .scotsman-dr-cell.unknown { opacity: 0.55; }
+    .scotsman-gaps-callout {
+      margin-top: 0.75rem; padding: 0.6rem 0.75rem;
+      background: rgba(231,76,60,0.07); border: 1px solid rgba(231,76,60,0.25);
+      border-radius: 6px; font-size: 0.8rem;
+    }
+    @media (max-width: 768px) { .scotsman-dr-grid { grid-template-columns: repeat(2,1fr); } }
   </style>
 </head>
 <body>
@@ -741,6 +806,81 @@
   const RISK_LEVELS  = ['Low', 'Medium', 'High'];
   const ACTION_STATUSES = ['Not Started', 'In Progress', 'Complete', 'Blocked', 'Deferred'];
 
+  // ── SCOTSMAN qualification ────────────────────────────────────────────────────
+  const SCOTSMAN_RATINGS = ['Strong', 'Partial', 'Weak', 'Unknown'];
+  const SCOTSMAN_POINTS  = { Strong: 3, Partial: 2, Weak: 1, Unknown: 0 };
+  const SCOTSMAN_CRITERIA = [
+    {
+      key: 'solution', label: 'Solution', letter: 'S',
+      desc: 'Does our proposed solution genuinely solve their core energy problem?',
+      hint: acc => acc.solution.solutions && acc.solution.solutions.length
+        ? `Solutions: ${acc.solution.solutions.slice(0, 3).join(', ')}` : null
+    },
+    {
+      key: 'competition', label: 'Competition', letter: 'C',
+      desc: 'Do we understand the competitive landscape and hold a clear advantage?',
+      hint: acc => acc.competition.competitors.some(c => c.name)
+        ? `${acc.competition.competitors.filter(c => c.name).length} competitor(s) mapped · Risk: ${acc.competition.riskLevel || 'not set'}` : null
+    },
+    {
+      key: 'originality', label: 'Originality', letter: 'O',
+      desc: 'Is our single differentiator clearly articulated and defensible?',
+      hint: acc => acc.competition.differentiator
+        ? `"${acc.competition.differentiator.slice(0, 55)}${acc.competition.differentiator.length > 55 ? '…' : ''}"` : null
+    },
+    {
+      key: 'timescale', label: 'Timescale', letter: 'T',
+      desc: 'Is there a compelling event with a real, confirmed decision timeline?',
+      hint: acc => {
+        const parts = [];
+        if (acc.problem.urgencyDate)  parts.push(`Urgency date: ${acc.problem.urgencyDate}`);
+        if (acc.process.contractDate) parts.push(`Contract target: ${acc.process.contractDate}`);
+        return parts.length ? parts.join(' · ') : null;
+      }
+    },
+    {
+      key: 'scale', label: 'Scale', letter: 'S',
+      desc: 'Is the deal value commensurate with the effort and investment justified?',
+      hint: acc => {
+        const parts = [];
+        if (acc.solution.dealValue)     parts.push(`Deal: ${acc.solution.dealValue}`);
+        if (acc.solution.savingsPerYear) parts.push(`Savings: ${acc.solution.savingsPerYear}/yr`);
+        return parts.length ? parts.join(' · ') : null;
+      }
+    },
+    {
+      key: 'money', label: 'Money', letter: 'M',
+      desc: 'Is budget confirmed or is there a credible, established funding path?',
+      hint: acc => {
+        const parts = [];
+        if (acc.process.budgetConfirmed) parts.push(`Budget: ${acc.process.budgetConfirmed}`);
+        if (acc.process.budgetSource)    parts.push(acc.process.budgetSource);
+        if (acc.solution.commercialModel) parts.push(`Model: ${acc.solution.commercialModel}`);
+        return parts.length ? parts.join(' · ') : null;
+      }
+    },
+    {
+      key: 'authority', label: 'Authority', letter: 'A',
+      desc: 'Have we engaged the Economic Buyer directly and do they know us?',
+      hint: acc => {
+        const eb = acc.stakeholders.find(s => s.roleType === 'Economic Buyer' && s.name);
+        return eb
+          ? `Economic Buyer: ${eb.name}${eb.title ? ' (' + eb.title + ')' : ''} · Stance: ${eb.stance || 'Unknown'}`
+          : 'No Economic Buyer mapped yet';
+      }
+    },
+    {
+      key: 'need', label: 'Need', letter: 'N',
+      desc: 'Is the business pain quantified with confirmed consequences of inaction?',
+      hint: acc => {
+        const parts = [];
+        if (acc.problem.financialImpact) parts.push(`Energy spend: ${acc.problem.financialImpact}`);
+        if (acc.problem.doNothing)       parts.push(`Do nothing: ${acc.problem.doNothing.slice(0, 50)}`);
+        return parts.length ? parts.join(' · ') : null;
+      }
+    }
+  ];
+
   // ── Default account shape ────────────────────────────────────────────────────
 
   function defaultAccount(n) {
@@ -821,7 +961,19 @@
       actions: [],
 
       // Section 9 — Risk Register
-      risks: []
+      risks: [],
+
+      // Deal Qualification — SCOTSMAN
+      qualification: {
+        solution:    { rating: '', notes: '' },
+        competition: { rating: '', notes: '' },
+        originality: { rating: '', notes: '' },
+        timescale:   { rating: '', notes: '' },
+        scale:       { rating: '', notes: '' },
+        money:       { rating: '', notes: '' },
+        authority:   { rating: '', notes: '' },
+        need:        { rating: '', notes: '' }
+      }
     };
   }
 
@@ -1088,9 +1240,18 @@
     const nav = document.getElementById('accountTabs');
     nav.innerHTML = '';
     state.accounts.forEach((acc, i) => {
-      const btn = h('button', 'tab-btn' + (i === state.activeTab ? ' active' : ''),
-        acc.name || `Account ${i + 1}`
-      );
+      const btn = document.createElement('button');
+      btn.className = 'tab-btn' + (i === state.activeTab ? ' active' : '');
+      btn.appendChild(document.createTextNode(acc.name || `Account ${i + 1}`));
+
+      const hasAnyRating = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
+      if (hasAnyRating) {
+        const qs = computeQualScore(acc);
+        const qBadge = h('span', `tab-qual-badge ${qualScoreClass(qs)}`, `Q:${qs}`);
+        qBadge.title = `Deal Quality Score: ${qs}/100`;
+        btn.appendChild(qBadge);
+      }
+
       btn.addEventListener('click', () => {
         state.activeTab = i;
         saveState();
@@ -1142,6 +1303,17 @@
     return Math.max(0, 100 - reds * 20 - yells * 7);
   }
 
+  function computeQualScore(acc) {
+    const q = acc.qualification;
+    if (!q) return 0;
+    const total = SCOTSMAN_CRITERIA.reduce((sum, c) => sum + (SCOTSMAN_POINTS[q[c.key]?.rating] || 0), 0);
+    return Math.round((total / 24) * 100);
+  }
+
+  function qualScoreClass(score) {
+    return score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
+  }
+
   // ── Health strip ──────────────────────────────────────────────────────────────
 
   function renderHealthStrip(acc) {
@@ -1150,12 +1322,28 @@
     const cls   = score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
 
     const strip   = h('div', 'health-strip');
+
+    // Plan Health circle
     const scoreWrap = h('div', 'health-score');
     const circle  = h('div', `score-circle ${cls}`, String(score));
     const lbl     = h('div', 'score-label');
     lbl.innerHTML = `<strong>Plan Health</strong>${gaps.length === 0 ? 'All checks passed ✓' : `${gaps.length} issue${gaps.length > 1 ? 's' : ''} found`}`;
     scoreWrap.appendChild(circle);
     scoreWrap.appendChild(lbl);
+    strip.appendChild(scoreWrap);
+
+    // Deal Quality circle (SCOTSMAN)
+    const qs = computeQualScore(acc);
+    const qcls = qualScoreClass(qs);
+    const hasAnyRating = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
+    const qWrap = h('div', 'health-score');
+    const qCircle = h('div', `score-circle ${hasAnyRating ? qcls : 'low'}`, hasAnyRating ? String(qs) : '—');
+    if (!hasAnyRating) { qCircle.style.opacity = '0.4'; qCircle.style.borderStyle = 'dashed'; }
+    const qLbl = h('div', 'score-label');
+    qLbl.innerHTML = `<strong>Deal Quality</strong>${hasAnyRating ? 'SCOTSMAN score' : 'Not yet rated'}`;
+    qWrap.appendChild(qCircle);
+    qWrap.appendChild(qLbl);
+    strip.appendChild(qWrap);
 
     const warnWrap = h('div', 'health-warnings');
     if (gaps.length === 0) {
@@ -1164,7 +1352,6 @@
       gaps.forEach(g => warnWrap.appendChild(h('span', `warning-tag ${g.level}`, g.text)));
     }
 
-    strip.appendChild(scoreWrap);
     strip.appendChild(warnWrap);
     return strip;
   }
@@ -1219,6 +1406,12 @@
     main.appendChild(makeSection('💡', 'Customer Problem & Value',
       badge(acc.problem.financialImpact),
       typeof renderProblem === 'function' ? renderProblem(acc) : stubSection('Customer Problem & Value')
+    ));
+    const _qs = computeQualScore(acc);
+    const _hasQual = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
+    main.appendChild(makeSection('🎯', 'Deal Qualification (SCOTSMAN)',
+      badge(_hasQual ? `${_qs}/100` : ''),
+      renderQualification(acc)
     ));
     main.appendChild(makeSection('👥', 'Decision Maker Analysis',
       badge(acc.stakeholders.length ? `${acc.stakeholders.length} stakeholder${acc.stakeholders.length > 1 ? 's' : ''}` : ''),
@@ -1909,6 +2102,106 @@
     return wrap;
   }
 
+  // ── Deal Qualification (SCOTSMAN) ────────────────────────────────────────────
+
+  function renderQualification(acc) {
+    const i = state.activeTab;
+    const q = acc.qualification || {};
+    const wrap = h('div', '');
+
+    // Score bar
+    const qs = computeQualScore(acc);
+    const qcls = qualScoreClass(qs);
+    const hasAny = SCOTSMAN_CRITERIA.some(c => q[c.key]?.rating);
+    const bar = h('div', 'scotsman-score-bar');
+    const qcirc = h('div', `score-circle ${hasAny ? qcls : 'low'}`, hasAny ? String(qs) : '—');
+    if (!hasAny) { qcirc.style.opacity = '0.4'; qcirc.style.borderStyle = 'dashed'; }
+    const qlbl = h('div', 'score-label');
+    qlbl.innerHTML = `<strong>Deal Quality Score</strong>Rate each criterion below · max 24 pts`;
+    bar.appendChild(qcirc);
+    bar.appendChild(qlbl);
+
+    const progWrap = h('div', 'scotsman-prog-wrap');
+    const progBg   = h('div', 'scotsman-prog-bg');
+    const progFill = h('div', 'scotsman-prog-fill');
+    const fillColor = qs >= 70 ? 'var(--green)' : qs >= 40 ? 'var(--yellow)' : 'var(--red)';
+    progFill.style.cssText = `width:${hasAny ? qs : 0}%;background:${fillColor};`;
+    progBg.appendChild(progFill);
+    progWrap.appendChild(progBg);
+    bar.appendChild(progWrap);
+    wrap.appendChild(bar);
+
+    // Table
+    const tableWrap = h('div', 'table-wrap');
+    const table = document.createElement('table');
+    table.className = 'scotsman-table';
+    table.innerHTML = `<thead><tr>
+      <th style="width:36px"></th>
+      <th style="width:200px">Criterion</th>
+      <th style="width:140px">Rating</th>
+      <th>Notes / Evidence</th>
+    </tr></thead>`;
+    const tbody = document.createElement('tbody');
+
+    SCOTSMAN_CRITERIA.forEach(c => {
+      const entry = q[c.key] || { rating: '', notes: '' };
+      const row = document.createElement('tr');
+
+      // Letter badge
+      const tdL = document.createElement('td');
+      tdL.style.textAlign = 'center';
+      tdL.appendChild(h('span', 'scotsman-letter', c.letter));
+      row.appendChild(tdL);
+
+      // Criterion + desc + hint
+      const tdC = document.createElement('td');
+      tdC.appendChild(h('span', 'scotsman-criterion', c.label));
+      tdC.appendChild(h('span', 'scotsman-desc', c.desc));
+      const hintText = c.hint(acc);
+      if (hintText) {
+        const hintEl = h('span', 'scotsman-hint', '💡 ' + hintText);
+        hintEl.title = 'Inferred from existing data — use as a starting point';
+        tdC.appendChild(hintEl);
+      }
+      row.appendChild(tdC);
+
+      // Rating dropdown
+      const tdR = document.createElement('td');
+      const ratingEl = sel(SCOTSMAN_RATINGS, entry.rating, v => {
+        if (!acc.qualification) acc.qualification = {};
+        if (!acc.qualification[c.key]) acc.qualification[c.key] = { rating: '', notes: '' };
+        acc.qualification[c.key].rating = v;
+        saveState();
+        renderApp();
+      });
+      const applyColor = (el, v) => {
+        el.style.color = v === 'Strong' ? 'var(--green)' : v === 'Partial' ? 'var(--yellow)' : v === 'Weak' ? 'var(--red)' : 'var(--text-muted)';
+        el.style.fontWeight = v ? '600' : '';
+      };
+      applyColor(ratingEl, entry.rating);
+      tdR.appendChild(ratingEl);
+      row.appendChild(tdR);
+
+      // Notes textarea
+      const tdN = document.createElement('td');
+      const notesEl = ta(entry.notes, v => {
+        if (!acc.qualification) acc.qualification = {};
+        if (!acc.qualification[c.key]) acc.qualification[c.key] = { rating: '', notes: '' };
+        acc.qualification[c.key].notes = v;
+        saveState();
+      }, 2, `Evidence or context for ${c.label}…`);
+      tdN.appendChild(notesEl);
+      row.appendChild(tdN);
+
+      tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
   // ── Section 8: Mutual Action Plan ─────────────────────────────────────────────
 
   function renderActions(acc) {
@@ -2579,6 +2872,53 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     }
     grid.appendChild(q5);
 
+    // ── Q6: Deal Qualification (SCOTSMAN) — full width ──
+    const q6 = h('div', 'dr-card full');
+    q6.appendChild(h('h3', '', '6. Deal Qualification (SCOTSMAN)'));
+    const dqs = computeQualScore(acc);
+    const dqcls = qualScoreClass(dqs);
+    const dqHasAny = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
+    const qSumLine = h('div', '');
+    qSumLine.style.cssText = 'display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;';
+    const qSumCircle = h('div', `score-circle ${dqHasAny ? dqcls : 'low'}`, dqHasAny ? String(dqs) : '—');
+    if (!dqHasAny) { qSumCircle.style.opacity = '0.4'; qSumCircle.style.borderStyle = 'dashed'; }
+    qSumLine.appendChild(qSumCircle);
+    const qSumLbl = h('div', 'score-label');
+    const dqColor = dqs >= 70 ? 'var(--green)' : dqs >= 40 ? 'var(--yellow)' : 'var(--red)';
+    qSumLbl.innerHTML = dqHasAny
+      ? `<strong style="color:${dqColor}">Deal Quality: ${dqs}/100</strong>SCOTSMAN framework`
+      : `<strong>Not yet rated</strong>Open Deal Qualification section to complete`;
+    qSumLine.appendChild(qSumLbl);
+    q6.appendChild(qSumLine);
+
+    if (dqHasAny) {
+      const sdGrid = h('div', 'scotsman-dr-grid');
+      SCOTSMAN_CRITERIA.forEach(c => {
+        const entry = acc.qualification?.[c.key] || {};
+        const rating = entry.rating || 'Unknown';
+        const cell = h('div', `scotsman-dr-cell ${rating.toLowerCase()}`);
+        cell.appendChild(h('div', 'sdc-letter', c.letter));
+        cell.appendChild(h('div', 'sdc-label', c.label));
+        const rEl = h('div', 'sdc-rating', rating);
+        rEl.style.color = rating === 'Strong' ? 'var(--green)' : rating === 'Partial' ? 'var(--yellow)' : rating === 'Weak' ? 'var(--red)' : 'var(--text-muted)';
+        cell.appendChild(rEl);
+        if (entry.notes) {
+          cell.appendChild(h('div', 'sdc-notes', entry.notes.length > 60 ? entry.notes.slice(0, 60) + '…' : entry.notes));
+        }
+        sdGrid.appendChild(cell);
+      });
+      q6.appendChild(sdGrid);
+
+      const weakItems = SCOTSMAN_CRITERIA.filter(c => !acc.qualification?.[c.key]?.rating || acc.qualification[c.key].rating === 'Weak' || acc.qualification[c.key].rating === 'Unknown');
+      if (weakItems.length) {
+        const warn = h('div', 'scotsman-gaps-callout');
+        warn.innerHTML = `<strong style="color:var(--red)">Gaps requiring attention:</strong> ` +
+          weakItems.map(c => `<span style="color:var(--text-muted)">${c.label} (${acc.qualification?.[c.key]?.rating || 'Not rated'})</span>`).join(' · ');
+        q6.appendChild(warn);
+      }
+    }
+    grid.appendChild(q6);
+
     overlay.appendChild(grid);
 
     // ── Print hint ──
@@ -2804,10 +3144,12 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
 
     const summaryRows = state.accounts.map(acc => {
       const score = computeScore(acc);
+      const qs    = computeQualScore(acc);
       const gaps  = computeGaps(acc);
       const reds  = gaps.filter(g => g.level === 'red').length;
       const yells = gaps.filter(g => g.level === 'yellow').length;
       const issueText = reds > 0 ? `${reds} critical` : yells > 0 ? `${yells} advisory` : 'Clear';
+      const hasQual = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
       return [
         acc.name || '—',
         acc.stage || '—',
@@ -2815,6 +3157,7 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
         acc.solution.dealValue || '—',
         acc.solution.savingsPerYear || '—',
         `${score}/100`,
+        hasQual ? `${qs}/100` : '—',
         issueText
       ];
     });
@@ -2822,10 +3165,10 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     doc.autoTable({
       ...tableDefaults,
       startY: y,
-      head: [['Account', 'Stage', 'Account Manager', 'Deal Value', 'Savings/yr', 'Health', 'Issues']],
+      head: [['Account', 'Stage', 'Account Manager', 'Deal Value', 'Savings/yr', 'Health', 'Quality', 'Issues']],
       body: summaryRows,
       didParseCell: data => {
-        if (data.section === 'body' && data.column.index === 6) {
+        if (data.section === 'body' && data.column.index === 7) {
           const val = data.cell.raw;
           data.cell.styles.textColor = val.includes('critical') ? C.red : val.includes('advisory') ? C.yellow : C.green;
         }
@@ -2833,6 +3176,14 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
           const score = parseInt(data.cell.raw);
           data.cell.styles.textColor  = score >= 70 ? C.green : score >= 40 ? C.yellow : C.red;
           data.cell.styles.fontStyle  = 'bold';
+        }
+        if (data.section === 'body' && data.column.index === 6) {
+          const raw = data.cell.raw;
+          if (raw !== '—') {
+            const qs = parseInt(raw);
+            data.cell.styles.textColor = qs >= 70 ? C.green : qs >= 40 ? C.yellow : C.red;
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
       }
     });
@@ -3057,6 +3408,41 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
             }
           },
           columnStyles: { 0: { cellWidth: 55 } }
+        });
+        y = doc.lastAutoTable.finalY + 4;
+      }
+
+      // ── Deal Qualification (SCOTSMAN) ──
+      const hasQual = SCOTSMAN_CRITERIA.some(c => acc.qualification?.[c.key]?.rating);
+      if (hasQual) {
+        if (y > PH - 60) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
+        y = divider(y + 2);
+        y = sectionTitle(y, 'Deal Qualification (SCOTSMAN)');
+        const dqs = computeQualScore(acc);
+        const dqColor = dqs >= 70 ? C.green : dqs >= 40 ? C.yellow : C.red;
+        color(dqColor); sz(9); bold();
+        doc.text(`Deal Quality Score: ${dqs}/100`, MARGIN, y);
+        norm(); y += 7;
+        doc.autoTable({
+          ...tableDefaults,
+          startY: y,
+          head: [['', 'Criterion', 'Rating', 'Notes / Evidence']],
+          body: SCOTSMAN_CRITERIA.map(c => {
+            const entry = acc.qualification?.[c.key] || {};
+            return [c.letter, c.label, entry.rating || '—', entry.notes || '—'];
+          }),
+          didParseCell: data => {
+            if (data.section === 'body' && data.column.index === 2) {
+              const v = data.cell.raw;
+              data.cell.styles.textColor = v === 'Strong' ? C.green : v === 'Partial' ? C.yellow : v === 'Weak' ? C.red : C.tblMuted;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (data.section === 'body' && data.column.index === 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.halign = 'center';
+            }
+          },
+          columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 32 }, 2: { cellWidth: 24 } }
         });
         y = doc.lastAutoTable.finalY + 4;
       }
