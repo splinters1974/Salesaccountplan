@@ -1382,6 +1382,300 @@
     return wrap;
   }
 
+  // ── Section 4: Decision Architecture ─────────────────────────────────────────
+
+  function renderStakeholders(acc) {
+    const wrap = h('div', '');
+
+    // Add-row button
+    const addBtn = h('button', 'btn btn-ghost btn-sm', '+ Add Stakeholder');
+    addBtn.addEventListener('click', () => {
+      acc.stakeholders.push({
+        name: '', title: '', linkedin: '', roleType: '',
+        power: '', stance: '', personalWin: '',
+        relationshipStrength: 0, aiSummary: ''
+      });
+      saveState();
+      renderApp();
+    });
+    wrap.appendChild(h('div', 'action-row', addBtn));
+
+    if (acc.stakeholders.length === 0) {
+      wrap.appendChild(h('p', 'empty-state', 'No stakeholders added yet — click + Add Stakeholder to begin.'));
+      return wrap;
+    }
+
+    const tableWrap = h('div', 'table-wrap');
+    const table = document.createElement('table');
+    table.className = 'dyn-table';
+
+    // Header
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th>Name / LinkedIn</th>
+      <th>Title</th>
+      <th>Role Type</th>
+      <th>Power</th>
+      <th>Stance</th>
+      <th>Personal Win (WIIFM)</th>
+      <th>Relationship</th>
+      <th>AI Summary</th>
+      <th></th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    acc.stakeholders.forEach((s, si) => {
+      const tr = document.createElement('tr');
+
+      // Name + LinkedIn stacked in one cell
+      const tdName = document.createElement('td');
+      tdName.style.minWidth = '150px';
+      const nameInp = inp('text', s.name,
+        v => { s.name = v; saveState(); refreshHealth(); }, 'Full name');
+      const liInp = inp('url', s.linkedin,
+        v => { s.linkedin = v; saveState(); }, 'LinkedIn URL');
+      liInp.style.marginTop = '4px';
+      liInp.style.fontSize  = '0.75rem';
+      tdName.appendChild(nameInp);
+      tdName.appendChild(liInp);
+      tr.appendChild(tdName);
+
+      // Title
+      const tdTitle = document.createElement('td');
+      tdTitle.style.minWidth = '120px';
+      tdTitle.appendChild(inp('text', s.title, v => { s.title = v; saveState(); }, 'Job title'));
+      tr.appendChild(tdTitle);
+
+      // Role type
+      const tdRole = document.createElement('td');
+      tdRole.appendChild(sel(ROLE_TYPES, s.roleType,
+        v => { s.roleType = v; saveState(); refreshHealth(); }));
+      tr.appendChild(tdRole);
+
+      // Power
+      const tdPower = document.createElement('td');
+      tdPower.appendChild(sel(POWER_LEVELS, s.power, v => { s.power = v; saveState(); }));
+      tr.appendChild(tdPower);
+
+      // Stance
+      const tdStance = document.createElement('td');
+      tdStance.appendChild(sel(STANCES, s.stance, v => { s.stance = v; saveState(); }));
+      tr.appendChild(tdStance);
+
+      // WIIFM
+      const tdWin = document.createElement('td');
+      tdWin.style.minWidth = '160px';
+      tdWin.appendChild(ta(s.personalWin,
+        v => { s.personalWin = v; saveState(); }, 2, 'Their personal win…'));
+      tr.appendChild(tdWin);
+
+      // Stars — relationship strength
+      const tdStars = document.createElement('td');
+      tdStars.style.textAlign = 'center';
+      tdStars.appendChild(starsWidget(s.relationshipStrength, v => {
+        s.relationshipStrength = v;
+        saveState();
+        // update stars in place
+        tdStars.innerHTML = '';
+        tdStars.appendChild(starsWidget(v, nv => {
+          s.relationshipStrength = nv;
+          saveState();
+        }));
+      }));
+      tr.appendChild(tdStars);
+
+      // AI summary cell
+      const tdAI = document.createElement('td');
+      tdAI.style.minWidth = '170px';
+      buildContactAICell(tdAI, acc, s, si);
+      tr.appendChild(tdAI);
+
+      // Delete
+      const tdDel = document.createElement('td');
+      const delBtn = h('button', 'btn btn-danger btn-sm btn-icon', '✕');
+      delBtn.title = 'Remove stakeholder';
+      delBtn.addEventListener('click', () => {
+        acc.stakeholders.splice(si, 1);
+        saveState();
+        renderApp();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
+  }
+
+  // Builds / rebuilds the AI summary cell for a stakeholder row
+  function buildContactAICell(td, acc, s, si) {
+    td.innerHTML = '';
+    if (s.aiSummary) {
+      const summary = h('div', '');
+      summary.style.cssText = 'font-size:0.75rem;color:var(--text-muted);max-height:72px;overflow-y:auto;margin-bottom:4px;line-height:1.4;';
+      summary.textContent = s.aiSummary;
+      td.appendChild(summary);
+    }
+    const btn = h('button', 'btn btn-ghost btn-sm', s.aiSummary ? '↺ Refresh' : '🔍 Research');
+    btn.addEventListener('click', () => runContactResearch(acc, s, btn, td, si));
+    td.appendChild(btn);
+  }
+
+  // ── Section 5: Decision Process ───────────────────────────────────────────────
+
+  function renderProcess(acc) {
+    const wrap = h('div', '');
+
+    // Row 1 — procurement + framework
+    const g1 = h('div', 'form-grid');
+    g1.appendChild(frow('Procurement Route',
+      sel(PROCUREMENT_ROUTES, acc.process.procurementRoute,
+        v => { acc.process.procurementRoute = v; saveState(); refreshHealth(); })
+    ));
+    g1.appendChild(frow('Framework Name',
+      sel(FRAMEWORKS, acc.process.frameworkName,
+        v => { acc.process.frameworkName = v; saveState(); })
+    ));
+    wrap.appendChild(g1);
+
+    // Row 2 — budget confirmed (chip group) + source + contract date
+    const g2 = h('div', 'form-grid cols-3 mt-md');
+
+    // Budget confirmed — chip group inside a frow-style wrapper
+    const budgetWrap = h('div', 'form-row');
+    const budgetLbl = document.createElement('label');
+    budgetLbl.textContent = 'Budget Confirmed';
+    budgetWrap.appendChild(budgetLbl);
+    budgetWrap.appendChild(chipGroup(['Yes', 'No', 'Partial'],
+      acc.process.budgetConfirmed,
+      v => { acc.process.budgetConfirmed = v; saveState(); refreshHealth(); }
+    ));
+    g2.appendChild(budgetWrap);
+
+    g2.appendChild(frow('Budget Source / Reference',
+      inp('text', acc.process.budgetSource,
+        v => { acc.process.budgetSource = v; saveState(); },
+        'e.g. Capital Programme 2025/26')
+    ));
+    g2.appendChild(frow('Expected Contract Date',
+      inp('date', acc.process.contractDate,
+        v => { acc.process.contractDate = v; saveState(); })
+    ));
+    wrap.appendChild(g2);
+
+    // Key dependencies — multi-chip
+    const depsWrap = h('div', 'mt-lg');
+    const depsLbl = document.createElement('label');
+    depsLbl.textContent = 'Key Dependencies';
+    depsWrap.appendChild(depsLbl);
+    depsWrap.appendChild(
+      chipGroupMulti(KEY_DEPS, acc.process.keyDeps, () => saveState())
+    );
+    wrap.appendChild(depsWrap);
+
+    // Approval stages — dynamic list
+    const stagesWrap = h('div', 'mt-lg');
+    const stagesLbl = document.createElement('label');
+    stagesLbl.textContent = 'Approval Stages';
+    stagesWrap.appendChild(stagesLbl);
+
+    const stageList = h('div', 'approval-list');
+
+    function rebuildStageList() {
+      stageList.innerHTML = '';
+      (acc.process.approvalStages || []).forEach((stage, si) => {
+        const item = h('div', 'approval-item');
+        const stageInp = inp('text', stage,
+          v => { acc.process.approvalStages[si] = v; saveState(); },
+          `Stage ${si + 1}`);
+        const delBtn = h('button', 'btn btn-danger btn-sm btn-icon', '✕');
+        delBtn.addEventListener('click', () => {
+          acc.process.approvalStages.splice(si, 1);
+          saveState();
+          rebuildStageList();
+        });
+        item.appendChild(stageInp);
+        item.appendChild(delBtn);
+        stageList.appendChild(item);
+      });
+    }
+    rebuildStageList();
+
+    const addStageBtn = h('button', 'btn btn-ghost btn-sm mt-sm', '+ Add Stage');
+    addStageBtn.addEventListener('click', () => {
+      acc.process.approvalStages.push('');
+      saveState();
+      rebuildStageList();
+    });
+
+    stagesWrap.appendChild(stageList);
+    stagesWrap.appendChild(addStageBtn);
+    wrap.appendChild(stagesWrap);
+
+    return wrap;
+  }
+
+  // ── Section 6: Our Solution & Commercial Structure ────────────────────────────
+
+  function renderSolution(acc) {
+    const wrap = h('div', '');
+
+    // Solutions pill multi-select
+    const solWrap = h('div', 'form-row');
+    const solLbl = document.createElement('label');
+    solLbl.textContent = 'Solutions (select all that apply)';
+    solWrap.appendChild(solLbl);
+    solWrap.appendChild(
+      pillGroupMulti(SOLUTIONS, acc.solution.solutions, () => saveState())
+    );
+    wrap.appendChild(solWrap);
+
+    // Commercial details grid
+    const g = h('div', 'form-grid mt-md');
+    g.appendChild(frow('Commercial Model',
+      sel(COMMERCIAL_MODELS, acc.solution.commercialModel,
+        v => { acc.solution.commercialModel = v; saveState(); })
+    ));
+    g.appendChild(frow('Deal Value (£)',
+      inp('text', acc.solution.dealValue,
+        v => { acc.solution.dealValue = v; saveState(); }, 'e.g. £1,200,000')
+    ));
+    g.appendChild(frow('Annual Savings (£/yr)',
+      inp('text', acc.solution.savingsPerYear,
+        v => { acc.solution.savingsPerYear = v; saveState(); }, 'e.g. £85,000/yr')
+    ));
+    g.appendChild(frow('Carbon Reduction (tCO2e/yr)',
+      inp('text', acc.solution.carbonReduction,
+        v => { acc.solution.carbonReduction = v; saveState(); }, 'e.g. 320 tCO2e/yr')
+    ));
+    g.appendChild(frow('ROI / Payback Period',
+      inp('text', acc.solution.roiPayback,
+        v => { acc.solution.roiPayback = v; saveState(); }, 'e.g. 7.5yr payback / 13% IRR')
+    ));
+    g.appendChild(frow('Salesforce Opportunity URL',
+      inp('url', acc.solution.salesforceUrl,
+        v => { acc.solution.salesforceUrl = v; saveState(); }, 'https://…')
+    ));
+    wrap.appendChild(g);
+
+    // How solution meets criteria — full width
+    const g2 = h('div', 'form-grid cols-1 mt-md');
+    g2.appendChild(frow('How Our Solution Meets the Decision Criteria',
+      ta(acc.solution.meetsCriteria,
+        v => { acc.solution.meetsCriteria = v; saveState(); }, 4,
+        'Map each decision criterion to how our solution directly addresses it…')
+    ));
+    wrap.appendChild(g2);
+
+    return wrap;
+  }
+
   // Boot
   renderApp();
   console.log('[AccountPlan] Render engine ready');
