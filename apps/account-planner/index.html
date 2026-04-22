@@ -16,7 +16,7 @@
       --navy-light:   #1e2d3d;
       --navy-lighter: #243447;
       --blue:         #1B6FAB;
-      --blue-light:   #2280c4;
+      --blue-light:   #5bb8e0;
       --blue-pale:    rgba(27,111,171,0.15);
       --accent:       #00c9ff;
       --green:        #27ae60;
@@ -696,7 +696,7 @@
   const STATUSES = ['Active', 'Warm', 'Cold', 'On Hold', 'Won', 'Lost'];
 
   const ROLE_TYPES = [
-    'Economic Buyer', 'Champion', 'Technical Buyer',
+    'Economic Buyer', 'Champion', 'Technical Buyer', 'User Buyer',
     'Influencer', 'Coach', 'Gatekeeper', 'End User'
   ];
 
@@ -724,7 +724,8 @@
     'Technical Review', 'Legal Sign-off', 'Finance Approval', 'Board Sign-off'
   ];
 
-  const COMMERCIAL_MODELS = ['Capex', 'PPA', 'EaaS', 'Lease', 'Managed Service', 'Hybrid'];
+  const COMMERCIAL_MODELS = ['Capex', 'PPA', 'EaaS', 'Lease', 'Managed Service', 'Hybrid', 'Multiple models being considered'];
+  const FUNDED_MODELS = new Set(['PPA', 'EaaS', 'Lease', 'Managed Service']);
 
   const RISK_CATS    = ['Commercial', 'Technical', 'Political', 'Resource', 'Programme', 'Regulatory', 'Competitive'];
   const ACTION_CATS  = ['Discovery', 'Proposal', 'Technical', 'Legal', 'Commercial', 'Stakeholder', 'Procurement', 'Other'];
@@ -782,6 +783,7 @@
       process: {
         procurementRoute: '',
         frameworkName:    '',
+        frameworkCustom:  '',
         budgetConfirmed:  '',
         budgetSource:     '',
         contractDate:     '',
@@ -1189,6 +1191,12 @@
   }
 
   function renderApp() {
+    // Preserve which sections were open before re-render
+    const openTitles = new Set(
+      [...document.querySelectorAll('#accountContent .section-card.open .section-title')]
+        .map(el => el.textContent.trim())
+    );
+
     renderTabs();
     const acc = getAccount();
     const idx = state.activeTab;
@@ -1212,9 +1220,9 @@
       badge(acc.problem.financialImpact),
       typeof renderProblem === 'function' ? renderProblem(acc) : stubSection('Customer Problem & Value')
     ));
-    main.appendChild(makeSection('👥', 'Decision Architecture',
+    main.appendChild(makeSection('👥', 'Decision Maker Analysis',
       badge(acc.stakeholders.length ? `${acc.stakeholders.length} stakeholder${acc.stakeholders.length > 1 ? 's' : ''}` : ''),
-      typeof renderStakeholders === 'function' ? renderStakeholders(acc) : stubSection('Decision Architecture')
+      typeof renderStakeholders === 'function' ? renderStakeholders(acc) : stubSection('Decision Maker Analysis')
     ));
     main.appendChild(makeSection('⚙️', 'Decision Process',
       badge(acc.process.procurementRoute),
@@ -1236,11 +1244,32 @@
       badge(acc.risks.length ? `${acc.risks.length} risk${acc.risks.length > 1 ? 's' : ''}` : ''),
       typeof renderRisks === 'function' ? renderRisks(acc) : stubSection('Risk Register')
     ));
+
+    // Restore sections that were open before re-render
+    if (openTitles.size > 0) {
+      main.querySelectorAll('.section-card').forEach(card => {
+        const title = card.querySelector('.section-title')?.textContent.trim();
+        if (openTitles.has(title)) card.classList.add('open');
+      });
+    }
   }
 
   // ── Placeholder stubs for PDF / Deal Review (filled in piece 9+10) ────────────
   function exportPDF()      { toast('PDF export coming in piece 10', 'info'); }
   function openDealReview() { toast('Deal Review coming in piece 10', 'info'); }
+
+  // ── Currency auto-format helper ───────────────────────────────────────────────
+  // Call on any text input that holds a £ value; formats on blur with commas.
+
+  function addCurrencyFormat(inputEl) {
+    inputEl.addEventListener('blur', () => {
+      const raw   = inputEl.value.replace(/[£,\s]/g, '');
+      const num   = parseFloat(raw);
+      if (isNaN(num) || raw === '') return;
+      const hadPound = inputEl.value.trim().startsWith('£');
+      inputEl.value  = (hadPound ? '£' : '') + num.toLocaleString('en-GB');
+    });
+  }
 
   // ── Section 1: Account Overview ───────────────────────────────────────────────
 
@@ -1343,11 +1372,11 @@
 
     // Metrics row — 2 col
     const g2 = h('div', 'form-grid mt-md');
-    g2.appendChild(frow('Annual Energy Spend (£)',
-      inp('text', acc.problem.financialImpact,
-        v => { acc.problem.financialImpact = v; saveState(); refreshHealth(); },
-        'e.g. £250,000/yr')
-    ));
+    const energyInp = inp('text', acc.problem.financialImpact,
+      v => { acc.problem.financialImpact = v; saveState(); refreshHealth(); },
+      'e.g. £250,000/yr');
+    addCurrencyFormat(energyInp);
+    g2.appendChild(frow('Annual Energy Spend (£)', energyInp));
     g2.appendChild(frow('Scope 1 / 2 / 3 Emissions',
       ta(acc.problem.scope123,
         v => { acc.problem.scope123 = v; saveState(); },
@@ -1370,9 +1399,47 @@
     urgencyLbl.textContent = 'Urgency Drivers (select all that apply)';
     urgencyWrap.appendChild(urgencyLbl);
     if (!Array.isArray(acc.problem.urgencyDrivers)) acc.problem.urgencyDrivers = [];
-    urgencyWrap.appendChild(
-      chipGroupMulti(URGENCY_DRIVERS, acc.problem.urgencyDrivers, () => saveState())
-    );
+
+    // Preset chips
+    const urgencyChipsEl = chipGroupMulti(URGENCY_DRIVERS, acc.problem.urgencyDrivers, () => saveState());
+    urgencyWrap.appendChild(urgencyChipsEl);
+
+    // Custom items already added (not in presets)
+    const customUrgencyWrap = h('div', 'check-group mt-sm');
+    const rebuildCustomUrgencyTags = () => {
+      customUrgencyWrap.innerHTML = '';
+      acc.problem.urgencyDrivers.filter(d => !URGENCY_DRIVERS.includes(d)).forEach(d => {
+        const tag = h('div', 'check-item checked', d);
+        const x = h('span', '', ' ✕');
+        x.style.cssText = 'margin-left:4px;cursor:pointer;opacity:0.7;';
+        x.addEventListener('click', e => { e.stopPropagation();
+          acc.problem.urgencyDrivers.splice(acc.problem.urgencyDrivers.indexOf(d), 1);
+          saveState(); rebuildCustomUrgencyTags(); });
+        tag.appendChild(x);
+        customUrgencyWrap.appendChild(tag);
+      });
+    };
+    rebuildCustomUrgencyTags();
+    urgencyWrap.appendChild(customUrgencyWrap);
+
+    // Add custom input
+    const customUrgencyRow = h('div', 'action-row mt-sm');
+    const customUrgencyInp = inp('text', '', () => {}, 'Add other urgency driver…');
+    customUrgencyInp.style.maxWidth = '280px';
+    const customUrgencyBtn = h('button', 'btn btn-ghost btn-sm', '+ Add');
+    customUrgencyBtn.addEventListener('click', () => {
+      const val = customUrgencyInp.value.trim();
+      if (val && !acc.problem.urgencyDrivers.includes(val)) {
+        acc.problem.urgencyDrivers.push(val);
+        saveState(); rebuildCustomUrgencyTags();
+      }
+      customUrgencyInp.value = '';
+    });
+    customUrgencyInp.addEventListener('keydown', e => { if (e.key === 'Enter') customUrgencyBtn.click(); });
+    customUrgencyRow.appendChild(customUrgencyInp);
+    customUrgencyRow.appendChild(customUrgencyBtn);
+    urgencyWrap.appendChild(customUrgencyRow);
+
     wrap.appendChild(urgencyWrap);
 
     // Decision criteria (up to 5)
@@ -1534,7 +1601,7 @@
     td.innerHTML = '';
     if (s.aiSummary) {
       const summary = h('div', '');
-      summary.style.cssText = 'font-size:0.75rem;color:var(--text-muted);max-height:72px;overflow-y:auto;margin-bottom:4px;line-height:1.4;';
+      summary.style.cssText = 'font-size:0.75rem;color:var(--text-muted);max-height:140px;overflow-y:auto;margin-bottom:4px;line-height:1.4;';
       summary.textContent = s.aiSummary;
       td.appendChild(summary);
     }
@@ -1554,10 +1621,22 @@
       sel(PROCUREMENT_ROUTES, acc.process.procurementRoute,
         v => { acc.process.procurementRoute = v; saveState(); refreshHealth(); })
     ));
-    g1.appendChild(frow('Framework Name',
-      sel(FRAMEWORKS, acc.process.frameworkName,
-        v => { acc.process.frameworkName = v; saveState(); })
-    ));
+    // Framework name with conditional freehand input for "Other"
+    const fwWrap = h('div', 'form-row');
+    const fwLbl  = document.createElement('label');
+    fwLbl.textContent = 'Framework Name';
+    fwWrap.appendChild(fwLbl);
+    const fwCustomInp = inp('text', acc.process.frameworkCustom || '',
+      v => { acc.process.frameworkCustom = v; saveState(); }, 'Enter framework name…');
+    fwCustomInp.style.marginTop = '4px';
+    fwCustomInp.style.display   = acc.process.frameworkName === 'Other' ? 'block' : 'none';
+    const fwSel = sel(FRAMEWORKS, acc.process.frameworkName, v => {
+      acc.process.frameworkName = v; saveState();
+      fwCustomInp.style.display = v === 'Other' ? 'block' : 'none';
+    });
+    fwWrap.appendChild(fwSel);
+    fwWrap.appendChild(fwCustomInp);
+    g1.appendChild(fwWrap);
     wrap.appendChild(g1);
 
     // Row 2 — budget confirmed (chip group) + source + contract date
@@ -1590,9 +1669,41 @@
     const depsLbl = document.createElement('label');
     depsLbl.textContent = 'Key Dependencies';
     depsWrap.appendChild(depsLbl);
-    depsWrap.appendChild(
-      chipGroupMulti(KEY_DEPS, acc.process.keyDeps, () => saveState())
-    );
+    depsWrap.appendChild(chipGroupMulti(KEY_DEPS, acc.process.keyDeps, () => saveState()));
+
+    // Custom key dependencies
+    const customDepsWrap = h('div', 'check-group mt-sm');
+    const rebuildCustomDeps = () => {
+      customDepsWrap.innerHTML = '';
+      acc.process.keyDeps.filter(d => !KEY_DEPS.includes(d)).forEach(d => {
+        const tag = h('div', 'check-item checked', d);
+        const x = h('span', '', ' ✕');
+        x.style.cssText = 'margin-left:4px;cursor:pointer;opacity:0.7;';
+        x.addEventListener('click', e => { e.stopPropagation();
+          acc.process.keyDeps.splice(acc.process.keyDeps.indexOf(d), 1);
+          saveState(); rebuildCustomDeps(); });
+        tag.appendChild(x);
+        customDepsWrap.appendChild(tag);
+      });
+    };
+    rebuildCustomDeps();
+    depsWrap.appendChild(customDepsWrap);
+
+    const customDepsRow = h('div', 'action-row mt-sm');
+    const customDepsInp = inp('text', '', () => {}, 'Add other dependency…');
+    customDepsInp.style.maxWidth = '280px';
+    const customDepsBtn = h('button', 'btn btn-ghost btn-sm', '+ Add');
+    customDepsBtn.addEventListener('click', () => {
+      const val = customDepsInp.value.trim();
+      if (val && !acc.process.keyDeps.includes(val)) {
+        acc.process.keyDeps.push(val); saveState(); rebuildCustomDeps();
+      }
+      customDepsInp.value = '';
+    });
+    customDepsInp.addEventListener('keydown', e => { if (e.key === 'Enter') customDepsBtn.click(); });
+    customDepsRow.appendChild(customDepsInp);
+    customDepsRow.appendChild(customDepsBtn);
+    depsWrap.appendChild(customDepsRow);
     wrap.appendChild(depsWrap);
 
     // Approval stages — dynamic list
@@ -1647,33 +1758,79 @@
     const solLbl = document.createElement('label');
     solLbl.textContent = 'Solutions (select all that apply)';
     solWrap.appendChild(solLbl);
-    solWrap.appendChild(
-      pillGroupMulti(SOLUTIONS, acc.solution.solutions, () => saveState())
-    );
+    solWrap.appendChild(pillGroupMulti(SOLUTIONS, acc.solution.solutions, () => saveState()));
+
+    // Custom solution technologies
+    const customSolWrap = h('div', 'pill-group mt-sm');
+    const rebuildCustomSols = () => {
+      customSolWrap.innerHTML = '';
+      acc.solution.solutions.filter(s => !SOLUTIONS.includes(s)).forEach(s => {
+        const pill = h('div', 'pill selected', s);
+        const x = h('span', '', ' ✕');
+        x.style.cssText = 'margin-left:4px;cursor:pointer;opacity:0.7;';
+        x.addEventListener('click', e => { e.stopPropagation();
+          acc.solution.solutions.splice(acc.solution.solutions.indexOf(s), 1);
+          saveState(); rebuildCustomSols(); });
+        pill.appendChild(x);
+        customSolWrap.appendChild(pill);
+      });
+    };
+    rebuildCustomSols();
+    solWrap.appendChild(customSolWrap);
+
+    const customSolRow = h('div', 'action-row mt-sm');
+    const customSolInp = inp('text', '', () => {}, 'Add other technology…');
+    customSolInp.style.maxWidth = '260px';
+    const customSolBtn = h('button', 'btn btn-ghost btn-sm', '+ Add');
+    customSolBtn.addEventListener('click', () => {
+      const val = customSolInp.value.trim();
+      if (val && !acc.solution.solutions.includes(val)) {
+        acc.solution.solutions.push(val); saveState(); rebuildCustomSols();
+      }
+      customSolInp.value = '';
+    });
+    customSolInp.addEventListener('keydown', e => { if (e.key === 'Enter') customSolBtn.click(); });
+    customSolRow.appendChild(customSolInp);
+    customSolRow.appendChild(customSolBtn);
+    solWrap.appendChild(customSolRow);
     wrap.appendChild(solWrap);
 
     // Commercial details grid
     const g = h('div', 'form-grid mt-md');
+
+    // ROI input — created first so commercial model setter can reference it
+    const roiInp = inp('text', acc.solution.roiPayback,
+      v => { acc.solution.roiPayback = v; saveState(); }, 'e.g. 7.5yr payback / 13% IRR');
+
+    function applyRoiState(model) {
+      const funded = FUNDED_MODELS.has(model);
+      roiInp.disabled         = funded;
+      roiInp.style.opacity    = funded ? '0.35' : '1';
+      roiInp.placeholder      = funded ? 'N/A — funded model, no client capex' : 'e.g. 7.5yr payback / 13% IRR';
+    }
+    applyRoiState(acc.solution.commercialModel);
+
     g.appendChild(frow('Commercial Model',
-      sel(COMMERCIAL_MODELS, acc.solution.commercialModel,
-        v => { acc.solution.commercialModel = v; saveState(); })
+      sel(COMMERCIAL_MODELS, acc.solution.commercialModel, v => {
+        acc.solution.commercialModel = v; saveState(); applyRoiState(v);
+      })
     ));
-    g.appendChild(frow('Deal Value (£)',
-      inp('text', acc.solution.dealValue,
-        v => { acc.solution.dealValue = v; saveState(); }, 'e.g. £1,200,000')
-    ));
-    g.appendChild(frow('Annual Savings (£/yr)',
-      inp('text', acc.solution.savingsPerYear,
-        v => { acc.solution.savingsPerYear = v; saveState(); }, 'e.g. £85,000/yr')
-    ));
+
+    const dealInp = inp('text', acc.solution.dealValue,
+      v => { acc.solution.dealValue = v; saveState(); }, 'e.g. £1,200,000');
+    addCurrencyFormat(dealInp);
+    g.appendChild(frow('Deal Value (£)', dealInp));
+
+    const savingsInp = inp('text', acc.solution.savingsPerYear,
+      v => { acc.solution.savingsPerYear = v; saveState(); }, 'e.g. £85,000/yr');
+    addCurrencyFormat(savingsInp);
+    g.appendChild(frow('Annual Savings (£/yr)', savingsInp));
+
     g.appendChild(frow('Carbon Reduction (tCO2e/yr)',
       inp('text', acc.solution.carbonReduction,
         v => { acc.solution.carbonReduction = v; saveState(); }, 'e.g. 320 tCO2e/yr')
     ));
-    g.appendChild(frow('ROI / Payback Period',
-      inp('text', acc.solution.roiPayback,
-        v => { acc.solution.roiPayback = v; saveState(); }, 'e.g. 7.5yr payback / 13% IRR')
-    ));
+    g.appendChild(frow('ROI / Payback Period', roiInp));
     g.appendChild(frow('Salesforce Opportunity URL',
       inp('url', acc.solution.salesforceUrl,
         v => { acc.solution.salesforceUrl = v; saveState(); }, 'https://…')
