@@ -442,6 +442,8 @@
       color: var(--text);
       white-space: pre-wrap;
       line-height: 1.55;
+      max-height: 140px;
+      overflow-y: auto;
     }
     .research-block .rb-value:empty::before { content: '—'; color: var(--text-muted); }
 
@@ -642,7 +644,7 @@
         <button class="btn btn-primary" style="flex:1" onclick="saveApiKey()">Save &amp; Continue</button>
         <button class="btn btn-ghost" onclick="dismissApiModal()">Skip</button>
       </div>
-      <p class="modal-note">Stored in sessionStorage only — cleared when you close this tab.</p>
+      <p class="modal-note">Stored in your browser's local storage — persists between sessions.</p>
     </div>
   </div>
 
@@ -726,6 +728,13 @@
 
   const RISK_CATS    = ['Commercial', 'Technical', 'Political', 'Resource', 'Programme', 'Regulatory', 'Competitive'];
   const ACTION_CATS  = ['Discovery', 'Proposal', 'Technical', 'Legal', 'Commercial', 'Stakeholder', 'Procurement', 'Other'];
+  const URGENCY_DRIVERS = [
+    'Regulatory deadline', 'Funding window', 'Energy cost pressure',
+    'Asset replacement', 'Net zero targets', 'Estate inefficiency',
+    'Stakeholder pressure', 'Procurement timing', 'Grid constraints',
+    'Reputational risk'
+  ];
+
   const LIKELIHOOD   = ['Low', 'Medium', 'High'];
   const IMPACT       = ['Low', 'Medium', 'High'];
   const RISK_LEVELS  = ['Low', 'Medium', 'High'];
@@ -757,9 +766,10 @@
       // Section 3 — Customer Problem & Value
       problem: {
         statement:       '',
-        financialImpact: '',
-        carbonImpact:    '',
-        urgencyDriver:   '',
+        financialImpact:  '',
+        scope123:         '',
+        urgencyDrivers:   [],
+        urgencyDriver:    '',
         urgencyDate:     '',
         doNothing:       '',
         criteria:        ['', '', '', '', '']
@@ -871,9 +881,9 @@
 
   function getAccount()   { return state.accounts[state.activeTab]; }
 
-  // ── API Key (sessionStorage) ─────────────────────────────────────────────────
+  // ── API Key (localStorage — persists across sessions) ────────────────────────
 
-  function getApiKey() { return sessionStorage.getItem('ameresco_api_key') || ''; }
+  function getApiKey() { return localStorage.getItem('ameresco_api_key') || ''; }
 
   function showApiModal() {
     document.getElementById('apiKeyInput').value = getApiKey();
@@ -884,8 +894,8 @@
   function saveApiKey() {
     const key = document.getElementById('apiKeyInput').value.trim();
     if (key) {
-      sessionStorage.setItem('ameresco_api_key', key);
-      toast('API key saved for this session', 'success');
+      localStorage.setItem('ameresco_api_key', key);
+      toast('API key saved', 'success');
     }
     document.getElementById('apiModal').classList.add('hidden');
   }
@@ -1331,33 +1341,39 @@
     ));
     wrap.appendChild(g1);
 
-    // Three-column metrics row
-    const g2 = h('div', 'form-grid cols-3 mt-md');
-    g2.appendChild(frow('Financial Impact (£)',
+    // Metrics row — 2 col
+    const g2 = h('div', 'form-grid mt-md');
+    g2.appendChild(frow('Annual Energy Spend (£)',
       inp('text', acc.problem.financialImpact,
         v => { acc.problem.financialImpact = v; saveState(); refreshHealth(); },
-        'e.g. £250,000/yr energy cost')
+        'e.g. £250,000/yr')
     ));
-    g2.appendChild(frow('Carbon Impact',
-      inp('text', acc.problem.carbonImpact,
-        v => { acc.problem.carbonImpact = v; saveState(); },
-        'e.g. 500 tCO2e/yr')
-    ));
-    g2.appendChild(frow('Urgency Driver',
-      inp('text', acc.problem.urgencyDriver,
-        v => { acc.problem.urgencyDriver = v; saveState(); },
-        'e.g. Net Zero 2030 target')
-    ));
-    g2.appendChild(frow('Urgency Date',
-      inp('date', acc.problem.urgencyDate,
-        v => { acc.problem.urgencyDate = v; saveState(); })
+    g2.appendChild(frow('Scope 1 / 2 / 3 Emissions',
+      ta(acc.problem.scope123,
+        v => { acc.problem.scope123 = v; saveState(); },
+        2, 'How does it impact them?')
     ));
     g2.appendChild(frow('"Do Nothing" Consequence',
       inp('text', acc.problem.doNothing,
         v => { acc.problem.doNothing = v; saveState(); },
         'e.g. Miss 2030 carbon target, rising energy costs')
     ));
+    g2.appendChild(frow('Urgency Date',
+      inp('date', acc.problem.urgencyDate,
+        v => { acc.problem.urgencyDate = v; saveState(); })
+    ));
     wrap.appendChild(g2);
+
+    // Urgency drivers — chip group multi-select
+    const urgencyWrap = h('div', 'mt-lg');
+    const urgencyLbl = document.createElement('label');
+    urgencyLbl.textContent = 'Urgency Drivers (select all that apply)';
+    urgencyWrap.appendChild(urgencyLbl);
+    if (!Array.isArray(acc.problem.urgencyDrivers)) acc.problem.urgencyDrivers = [];
+    urgencyWrap.appendChild(
+      chipGroupMulti(URGENCY_DRIVERS, acc.problem.urgencyDrivers, () => saveState())
+    );
+    wrap.appendChild(urgencyWrap);
 
     // Decision criteria (up to 5)
     const criSection = h('div', 'mt-lg');
@@ -2232,10 +2248,11 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     q1.appendChild(h('h3', '', '1. What is driving the deal?'));
 
     drField(q1, 'Problem', acc.problem.statement);
-    drField(q1, 'Financial impact', acc.problem.financialImpact);
-    drField(q1, 'Carbon impact', acc.problem.carbonImpact);
+    drField(q1, 'Annual Energy Spend', acc.problem.financialImpact);
+    drField(q1, 'Scope 1/2/3 Emissions', acc.problem.scope123);
 
-    const urgency = [acc.problem.urgencyDriver, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' ');
+    const urgencyDriverList = (acc.problem.urgencyDrivers || []).join(', ');
+    const urgency = [urgencyDriverList, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' — ');
     drField(q1, 'Urgency', urgency);
     drField(q1, '"Do nothing"', acc.problem.doNothing);
 
@@ -2663,9 +2680,10 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
       // ── Q1 ──
       y = sectionTitle(y, '1. What is driving the deal?');
       y = fieldLine(y, 'Problem',          acc.problem.statement);
-      y = fieldLine(y, 'Financial impact', acc.problem.financialImpact);
-      y = fieldLine(y, 'Carbon impact',    acc.problem.carbonImpact);
-      const urg = [acc.problem.urgencyDriver, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' ');
+      y = fieldLine(y, 'Annual Energy Spend', acc.problem.financialImpact);
+      y = fieldLine(y, 'Scope 1/2/3 Emissions', acc.problem.scope123);
+      const urgDrvs = (acc.problem.urgencyDrivers || []).join(', ');
+      const urg = [urgDrvs, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' — ');
       y = fieldLine(y, 'Urgency',          urg);
       y = fieldLine(y, '"Do nothing"',     acc.problem.doNothing);
       const crit = acc.problem.criteria.filter(Boolean);
