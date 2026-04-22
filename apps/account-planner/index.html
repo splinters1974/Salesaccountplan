@@ -669,8 +669,255 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    /* JavaScript will be added in subsequent pieces */
-    console.log('Ameresco Account Planning Tool — shell loaded');
+  'use strict';
+
+  // ── Constants ───────────────────────────────────────────────────────────────
+
+  const STORAGE_KEY = 'ameresco_account_plan_v2';
+
+  const SOLUTIONS = [
+    'Solar PV', 'LED Lighting', 'BEMS', 'EV Charging', 'Battery Storage',
+    'CHP', 'Heat Pump', 'Solar Thermal', 'Wind', 'Monitoring & Targeting',
+    'Power Purchase Agreement', 'Demand Response'
+  ];
+
+  const STAGES = [
+    'Prospecting', 'Qualifying', 'Solution Dev', 'Proposal',
+    'Negotiation', 'Closed Won', 'Closed Lost'
+  ];
+
+  const INDUSTRIES = [
+    'Local Government', 'Central Government', 'NHS & Healthcare', 'Education',
+    'Retail', 'Industrial', 'Commercial', 'Housing', 'Utilities', 'Other'
+  ];
+
+  const STATUSES = ['Active', 'Warm', 'Cold', 'On Hold', 'Won', 'Lost'];
+
+  const ROLE_TYPES = [
+    'Economic Buyer', 'Champion', 'Technical Buyer',
+    'Influencer', 'Coach', 'Gatekeeper', 'End User'
+  ];
+
+  const POWER_LEVELS = ['High', 'Medium', 'Low'];
+  const STANCES      = ['Supporter', 'Neutral', 'Opposed', 'Unknown'];
+
+  const PROCUREMENT_ROUTES = [
+    'Direct Award', 'Open Tender', 'Framework',
+    'Competitive Dialogue', 'Negotiated Procedure', 'Unknown'
+  ];
+
+  const FRAMEWORKS = [
+    'Crown Commercial Service', 'YPO', 'ESPO', 'Pagabo', 'Scape',
+    'NHS Shared Business Services', 'Local Authority Framework', 'Other', 'N/A'
+  ];
+
+  const KEY_DEPS = [
+    'Planning Permission Required', 'Board Sign-off Required',
+    'Legal Review Required', 'Technical Survey Required',
+    'Stakeholder Consultation', 'Funding Approval',
+    'Third-party Contractor', 'Site Access Agreement'
+  ];
+
+  const APPROVAL_STAGE_DEFAULTS = [
+    'Technical Review', 'Legal Sign-off', 'Finance Approval', 'Board Sign-off'
+  ];
+
+  const COMMERCIAL_MODELS = ['Capex', 'PPA', 'EaaS', 'Lease', 'Managed Service', 'Hybrid'];
+
+  const RISK_CATS    = ['Commercial', 'Technical', 'Political', 'Resource', 'Programme', 'Regulatory', 'Competitive'];
+  const ACTION_CATS  = ['Discovery', 'Proposal', 'Technical', 'Legal', 'Commercial', 'Stakeholder', 'Procurement', 'Other'];
+  const LIKELIHOOD   = ['Low', 'Medium', 'High'];
+  const IMPACT       = ['Low', 'Medium', 'High'];
+  const RISK_LEVELS  = ['Low', 'Medium', 'High'];
+  const ACTION_STATUSES = ['Not Started', 'In Progress', 'Complete', 'Blocked', 'Deferred'];
+
+  // ── Default account shape ────────────────────────────────────────────────────
+
+  function defaultAccount(n) {
+    return {
+      // Section 1 — Overview
+      name:           n ? `Account ${n}` : '',
+      website:        '',
+      industry:       '',
+      status:         '',
+      stage:          '',
+      accountManager: '',
+
+      // Section 2 — AI Company Research
+      research: {
+        overview:       '',
+        size:           '',
+        hq:             '',
+        sustainability: '',
+        energyProjects: '',
+        news:           '',
+        lastUpdated:    ''
+      },
+
+      // Section 3 — Customer Problem & Value
+      problem: {
+        statement:       '',
+        financialImpact: '',
+        carbonImpact:    '',
+        urgencyDriver:   '',
+        urgencyDate:     '',
+        doNothing:       '',
+        criteria:        ['', '', '', '', '']
+      },
+
+      // Section 4 — Decision Architecture
+      stakeholders: [],
+
+      // Section 5 — Decision Process
+      process: {
+        procurementRoute: '',
+        frameworkName:    '',
+        budgetConfirmed:  '',
+        budgetSource:     '',
+        contractDate:     '',
+        keyDeps:          [],
+        approvalStages:   []
+      },
+
+      // Section 6 — Our Solution & Commercial Structure
+      solution: {
+        solutions:      [],
+        commercialModel:'',
+        dealValue:      '',
+        savingsPerYear: '',
+        carbonReduction:'',
+        roiPayback:     '',
+        meetsCriteria:  '',
+        salesforceUrl:  ''
+      },
+
+      // Section 7 — Competitive Position
+      competition: {
+        competitors: [
+          { name: '', strength: '' },
+          { name: '', strength: '' },
+          { name: '', strength: '' },
+          { name: '', strength: '' }
+        ],
+        whyWeWin:      '',
+        whyWeLose:     '',
+        differentiator:'',
+        riskLevel:     ''
+      },
+
+      // Section 8 — Mutual Action Plan
+      actions: [],
+
+      // Section 9 — Risk Register
+      risks: []
+    };
+  }
+
+  // ── Deep merge (used when migrating saved state) ─────────────────────────────
+  // Preserves arrays from src; fills missing scalar keys from def.
+
+  function deepMerge(def, src) {
+    if (!src || typeof src !== 'object') return def;
+    const out = Object.assign({}, def);
+    for (const key of Object.keys(src)) {
+      const sv = src[key], dv = def ? def[key] : undefined;
+      if (Array.isArray(sv)) {
+        out[key] = sv;
+      } else if (sv !== null && typeof sv === 'object') {
+        out[key] = deepMerge(dv || {}, sv);
+      } else {
+        out[key] = sv;
+      }
+    }
+    return out;
+  }
+
+  // ── Persistence ──────────────────────────────────────────────────────────────
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Guarantee exactly 3 accounts with all fields present
+        while (parsed.accounts.length < 3) {
+          parsed.accounts.push(defaultAccount(parsed.accounts.length + 1));
+        }
+        parsed.accounts = parsed.accounts.slice(0, 3).map((a, i) =>
+          deepMerge(defaultAccount(i + 1), a)
+        );
+        if (typeof parsed.activeTab !== 'number') parsed.activeTab = 0;
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('[AccountPlan] State load error:', e);
+    }
+    return {
+      activeTab: 0,
+      accounts: [defaultAccount(1), defaultAccount(2), defaultAccount(3)]
+    };
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn('[AccountPlan] State save error:', e);
+    }
+  }
+
+  // Initialise global state
+  let state = loadState();
+
+  function getAccount()   { return state.accounts[state.activeTab]; }
+
+  // ── API Key (sessionStorage) ─────────────────────────────────────────────────
+
+  function getApiKey() { return sessionStorage.getItem('ameresco_api_key') || ''; }
+
+  function showApiModal() {
+    document.getElementById('apiKeyInput').value = getApiKey();
+    document.getElementById('apiModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('apiKeyInput').focus(), 50);
+  }
+
+  function saveApiKey() {
+    const key = document.getElementById('apiKeyInput').value.trim();
+    if (key) {
+      sessionStorage.setItem('ameresco_api_key', key);
+      toast('API key saved for this session', 'success');
+    }
+    document.getElementById('apiModal').classList.add('hidden');
+  }
+
+  function dismissApiModal() {
+    document.getElementById('apiModal').classList.add('hidden');
+  }
+
+  // Allow Enter key in the API key input
+  document.getElementById('apiKeyInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveApiKey();
+  });
+
+  // ── Toast ────────────────────────────────────────────────────────────────────
+
+  function toast(msg, type = 'info', duration = 3200) {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity 0.3s';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 320);
+    }, duration);
+  }
+
+  // ── Prompt for API key on first load if not set ───────────────────────────────
+
+  if (!getApiKey()) showApiModal();
+
+  console.log('[AccountPlan] State management ready — 3 accounts loaded');
   </script>
 </body>
 </html>
