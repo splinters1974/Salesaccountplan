@@ -2627,25 +2627,33 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     toast('Generating PDF…', 'info');
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const doc    = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const PW     = doc.internal.pageSize.getWidth();
     const PH     = doc.internal.pageSize.getHeight();
     const MARGIN = 14;
     const CW     = PW - MARGIN * 2;
 
-    // Colour palettes (RGB arrays)
+    // ── Colour palette ──
     const C = {
+      // Dark-background (tables, cover, header strip)
       navy:    [26,  38,  51],
       blue:    [27, 111, 171],
       accent:  [0,  180, 230],
       white:   [255,255,255],
-      text:    [220,228,236],
-      muted:   [130,155,180],
+      tblText: [220,228,236],
+      tblMuted:[130,155,180],
+      tblCard: [30,  45,  61],
+      tblAlt:  [22,  34,  46],
       border:  [45,  63,  82],
-      card:    [30,  45,  61],
+      // Light-background (body text on white page)
+      bodyText:  [18,  32,  52],   // near-black navy
+      bodyLabel: [27, 111, 171],   // Ameresco blue
+      bodyMuted: [80, 110, 148],   // medium blue-grey
+      bodySub:   [50,  70, 100],   // subtitles / section titles
+      // Status colours (work on both backgrounds)
       green:   [39, 174,  96],
-      red:     [220,  60,  50],
-      yellow:  [230, 150,  18],
+      red:     [210,  50,  40],
+      yellow:  [200, 130,  10],
     };
 
     const fill  = c => doc.setFillColor(...c);
@@ -2655,53 +2663,67 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     const norm  = ()  => doc.setFont('helvetica', 'normal');
     const sz    = n  => doc.setFontSize(n);
 
-    // ── Page header (stamped on every page except cover) ──
+    // ── Date formatter: ISO → dd/mm/yyyy ──
+    function fmtDate(d) {
+      if (!d) return '—';
+      const p = String(d).split('-');
+      if (p.length === 3 && p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`;
+      return d;
+    }
+
+    // ── Page header (every page except cover) ──
     function pageHeader() {
       fill(C.navy);
       doc.rect(0, 0, PW, 11, 'F');
-      color(C.muted); sz(7); norm();
+      color(C.tblMuted); sz(7); norm();
       doc.text('AMERESCO  |  Account Planning Tool', MARGIN, 7.5);
-      doc.text(`Generated ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}`,
-        PW - MARGIN, 7.5, { align: 'right' });
+      doc.text(
+        `Generated ${new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' })}`,
+        PW - MARGIN, 7.5, { align: 'right' }
+      );
     }
 
     // ── Page footer ──
-    function pageFooter(pageNum) {
-      color(C.muted); sz(7); norm();
-      doc.text(`Page ${pageNum}`, PW / 2, PH - 6, { align: 'center' });
+    function pageFooter(n) {
+      color(C.bodyMuted); sz(7); norm();
+      doc.text(`Page ${n}`, PW / 2, PH - 6, { align: 'center' });
     }
 
-    // ── autoTable defaults ──
+    // ── autoTable defaults (dark background) ──
     const tableDefaults = {
       theme: 'grid',
-      headStyles: { fillColor: C.navy, textColor: C.muted, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
-      bodyStyles: { fillColor: C.card, textColor: C.text, fontSize: 8, cellPadding: 2 },
-      alternateRowStyles: { fillColor: [22, 34, 46] },
+      headStyles: { fillColor: C.navy,    textColor: C.tblMuted, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
+      bodyStyles: { fillColor: C.tblCard, textColor: C.tblText,  fontSize: 8, cellPadding: 2 },
+      alternateRowStyles: { fillColor: C.tblAlt },
       tableLineColor: C.border,
       tableLineWidth: 0.2,
       margin: { left: MARGIN, right: MARGIN },
     };
 
-    // ── Helpers ──
+    // ── Body text helpers (dark text on white page) ──
     function sectionTitle(y, text) {
-      color(C.accent); sz(9); bold();
+      if (y > PH - 20) { doc.addPage(); pageHeader(); y = 18; }
+      color(C.blue); sz(9.5); bold();
       doc.text(text, MARGIN, y);
-      return y + 5;
+      // underline
+      draw(C.blue); doc.setLineWidth(0.3);
+      doc.line(MARGIN, y + 1, PW - MARGIN, y + 1);
+      return y + 7;
     }
 
     function fieldLine(y, label, value) {
-      if (!value) return y;
-      if (y > PH - 20) { doc.addPage(); pageHeader(); y = 18; }
-      color(C.muted);  sz(7.5); bold();
+      if (!value || value === '—') return y;
+      if (y > PH - 18) { doc.addPage(); pageHeader(); y = 18; }
+      color(C.bodyLabel); sz(7.5); bold();
       doc.text(label + ':', MARGIN, y);
-      color(C.text); norm();
-      const lines = doc.splitTextToSize(value, CW - 30);
-      doc.text(lines, MARGIN + 28, y);
-      return y + Math.max(lines.length * 4.5, 5);
+      color(C.bodyText); norm(); sz(8);
+      const lines = doc.splitTextToSize(String(value), CW - 32);
+      doc.text(lines, MARGIN + 30, y);
+      return y + Math.max(lines.length * 4.8, 5.5);
     }
 
     function divider(y) {
-      draw(C.border); doc.setLineWidth(0.2);
+      draw([200, 210, 220]); doc.setLineWidth(0.15);
       doc.line(MARGIN, y, PW - MARGIN, y);
       return y + 4;
     }
@@ -2713,39 +2735,57 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     // ════════════════════════════════════════════════════════════════════════════
     pageNum++;
 
+    // Full navy background
     fill(C.navy);
     doc.rect(0, 0, PW, PH, 'F');
 
-    // Blue band across centre
+    // Blue band — tall enough for all content
+    const bandTop = 60;
+    const bandH   = 155;
     fill(C.blue);
-    doc.rect(0, PH / 2 - 35, PW, 70, 'F');
+    doc.rect(0, bandTop, PW, bandH, 'F');
 
-    // Logo / title
-    color(C.accent); sz(30); bold();
-    doc.text('AMERESCO', PW / 2, PH / 2 - 16, { align: 'center' });
+    // Accent top stripe
+    fill(C.accent);
+    doc.rect(0, bandTop, PW, 2, 'F');
 
-    color(C.white); sz(15); norm();
-    doc.text('Account Plan Review', PW / 2, PH / 2 - 4, { align: 'center' });
+    // AMERESCO
+    color(C.accent); sz(32); bold();
+    doc.text('AMERESCO', PW / 2, bandTop + 22, { align: 'center' });
 
-    color(C.text); sz(10); norm();
+    // Subtitle
+    color(C.white); sz(14); norm();
+    doc.text('Account Plan Review', PW / 2, bandTop + 35, { align: 'center' });
+
+    // Date (dd/mm/yyyy)
+    color([180, 210, 235]); sz(9); norm();
     doc.text(
-      new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-      PW / 2, PH / 2 + 8, { align: 'center' }
+      new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      PW / 2, bandTop + 46, { align: 'center' }
     );
 
-    // Account names
+    // Thin separator
+    fill([255,255,255]);
+    doc.rect(MARGIN + 20, bandTop + 52, CW - 40, 0.5, 'F');
+
+    // Account names + AM
     const activeAccounts = state.accounts.filter(a => a.name);
     if (activeAccounts.length) {
-      let ay = PH / 2 + 22;
-      color(C.text); sz(9.5); norm();
+      let ay = bandTop + 64;
       activeAccounts.forEach(a => {
+        color(C.white); sz(10); bold();
         doc.text(`• ${a.name}`, PW / 2, ay, { align: 'center' });
-        ay += 7;
+        if (a.accountManager) {
+          color([180, 210, 235]); sz(8); norm();
+          doc.text(`Account Manager: ${a.accountManager}`, PW / 2, ay + 6, { align: 'center' });
+          ay += 6;
+        }
+        ay += 14;
       });
     }
 
-    // Confidential note
-    color(C.muted); sz(7.5); norm();
+    // Confidential footer
+    color(C.tblMuted); sz(7.5); norm();
     doc.text('Confidential — for internal use only', PW / 2, PH - 18, { align: 'center' });
     pageFooter(pageNum);
 
@@ -2754,11 +2794,13 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     // ════════════════════════════════════════════════════════════════════════════
     doc.addPage(); pageNum++;
     pageHeader();
-    let y = 18;
+    let y = 20;
 
-    color(C.accent); sz(13); bold();
+    color(C.navy); sz(13); bold();
     doc.text('Executive Summary', MARGIN, y);
-    y += 8;
+    draw(C.blue); doc.setLineWidth(0.4);
+    doc.line(MARGIN, y + 1.5, PW - MARGIN, y + 1.5);
+    y += 9;
 
     const summaryRows = state.accounts.map(acc => {
       const score = computeScore(acc);
@@ -2785,14 +2827,12 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
       didParseCell: data => {
         if (data.section === 'body' && data.column.index === 6) {
           const val = data.cell.raw;
-          if (val.includes('critical')) data.cell.styles.textColor = C.red;
-          else if (val.includes('advisory')) data.cell.styles.textColor = C.yellow;
-          else data.cell.styles.textColor = C.green;
+          data.cell.styles.textColor = val.includes('critical') ? C.red : val.includes('advisory') ? C.yellow : C.green;
         }
         if (data.section === 'body' && data.column.index === 5) {
           const score = parseInt(data.cell.raw);
-          data.cell.styles.textColor = score >= 70 ? C.green : score >= 40 ? C.yellow : C.red;
-          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor  = score >= 70 ? C.green : score >= 40 ? C.yellow : C.red;
+          data.cell.styles.fontStyle  = 'bold';
         }
       }
     });
@@ -2805,19 +2845,26 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     for (const acc of state.accounts) {
       if (!acc.name) continue;
 
-      // ── Account cover band ──
       doc.addPage(); pageNum++;
       pageHeader();
       y = 18;
 
+      // Account header band
       fill(C.blue);
-      doc.rect(MARGIN - 2, y - 4, CW + 4, 16, 'F');
+      doc.rect(MARGIN - 2, y - 4, CW + 4, 17, 'F');
       color(C.white); sz(12); bold();
       doc.text(acc.name, MARGIN + 2, y + 5);
-      sz(8); norm();
-      const metaStr = [acc.stage, acc.industry, acc.accountManager].filter(Boolean).join(' · ');
-      if (metaStr) doc.text(metaStr, PW - MARGIN - 2, y + 5, { align: 'right' });
-      y += 20;
+      sz(7.5); norm();
+      const metaStr = [acc.stage, acc.industry].filter(Boolean).join(' · ');
+      if (metaStr) {
+        color([180,210,235]);
+        doc.text(metaStr, MARGIN + 2, y + 11);
+      }
+      if (acc.accountManager) {
+        color([180,210,235]);
+        doc.text(`AM: ${acc.accountManager}`, PW - MARGIN - 2, y + 5, { align: 'right' });
+      }
+      y += 22;
 
       // Health score
       const score = computeScore(acc);
@@ -2826,7 +2873,7 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
       color(sColor); sz(9); bold();
       doc.text(`Plan Health: ${score}/100`, MARGIN, y);
       if (gaps.length) {
-        color(C.muted); sz(7); norm();
+        color(C.bodyMuted); sz(7); norm();
         const gapText = gaps.map(g => g.text.replace(/🔴|🟡/g, '').trim()).join('  |  ');
         const gapLines = doc.splitTextToSize(gapText, CW);
         doc.text(gapLines, MARGIN, y + 5);
@@ -2834,22 +2881,22 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
       }
       y = divider(y + 5);
 
-      // ── Q1 ──
+      // ── Q1: What is driving the deal? ──
       y = sectionTitle(y, '1. What is driving the deal?');
-      y = fieldLine(y, 'Problem',          acc.problem.statement);
+      y = fieldLine(y, 'Problem',             acc.problem.statement);
       y = fieldLine(y, 'Annual Energy Spend', acc.problem.financialImpact);
       y = fieldLine(y, 'Scope 1/2/3 Emissions', acc.problem.scope123);
       const urgDrvs = (acc.problem.urgencyDrivers || []).join(', ');
-      const urg = [urgDrvs, acc.problem.urgencyDate ? `by ${acc.problem.urgencyDate}` : ''].filter(Boolean).join(' — ');
-      y = fieldLine(y, 'Urgency',          urg);
-      y = fieldLine(y, '"Do nothing"',     acc.problem.doNothing);
+      const urgStr  = [urgDrvs, acc.problem.urgencyDate ? `by ${fmtDate(acc.problem.urgencyDate)}` : ''].filter(Boolean).join(' — ');
+      y = fieldLine(y, 'Urgency drivers',     urgStr);
+      y = fieldLine(y, '"Do nothing"',        acc.problem.doNothing);
       const crit = acc.problem.criteria.filter(Boolean);
       if (crit.length) {
-        y = fieldLine(y, 'Decision criteria', crit.map((c, i) => `${i+1}. ${c}`).join('  '));
+        y = fieldLine(y, 'Decision criteria', crit.map((c, i) => `${i+1}. ${c}`).join('  |  '));
       }
       y = divider(y + 2);
 
-      // ── Q2 — stakeholder table ──
+      // ── Q2: Who decides? ──
       if (y > PH - 55) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
       y = sectionTitle(y, '2. Who decides?');
       if (acc.stakeholders.length) {
@@ -2858,16 +2905,20 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
           startY: y,
           head: [['Name', 'Title', 'Role', 'Power', 'Stance', 'WIIFM', 'Relationship']],
           body: acc.stakeholders.map(s => [
-            s.name || '—', s.title || '—', s.roleType || '—',
-            s.power || '—', s.stance || '—', s.personalWin || '—',
-            '★'.repeat(s.relationshipStrength || 0) || '—'
+            s.name || '—',
+            s.title || '—',
+            s.roleType || '—',
+            s.power || '—',
+            s.stance || '—',
+            s.personalWin || '—',
+            s.relationshipStrength ? `${s.relationshipStrength}/5` : '—'
           ]),
           didParseCell: data => {
             if (data.section === 'body' && data.column.index === 4) {
               const v = data.cell.raw;
               data.cell.styles.textColor =
                 v === 'Supporter' ? C.green : v === 'Opposed' ? C.red :
-                v === 'Neutral'   ? C.yellow : C.muted;
+                v === 'Neutral'   ? C.yellow : C.tblMuted;
               data.cell.styles.fontStyle = 'bold';
             }
           },
@@ -2875,57 +2926,66 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
         });
         y = doc.lastAutoTable.finalY + 4;
       } else {
-        color(C.muted); sz(8); norm();
+        color(C.bodyMuted); sz(8); norm();
         doc.text('No stakeholders mapped', MARGIN, y); y += 7;
       }
       y = divider(y + 1);
 
-      // ── Q3 ──
+      // ── Q3: How does it get done? ──
       if (y > PH - 45) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
       y = sectionTitle(y, '3. How does it get done?');
-      const routeStr = [acc.process.procurementRoute, acc.process.frameworkName].filter(Boolean).join(' — ');
-      y = fieldLine(y, 'Procurement',       routeStr);
+      const fwName  = acc.process.frameworkName === 'Other'
+        ? (acc.process.frameworkCustom || 'Other')
+        : acc.process.frameworkName;
+      const routeStr = [acc.process.procurementRoute, fwName].filter(Boolean).join(' — ');
+      y = fieldLine(y, 'Procurement',      routeStr);
       const budStr = [acc.process.budgetConfirmed, acc.process.budgetSource].filter(Boolean).join(' — ');
-      y = fieldLine(y, 'Budget',            budStr);
-      y = fieldLine(y, 'Contract date',     acc.process.contractDate);
+      y = fieldLine(y, 'Budget',           budStr);
+      y = fieldLine(y, 'Contract date',    fmtDate(acc.process.contractDate));
       const stages = (acc.process.approvalStages || []).filter(Boolean);
       if (stages.length) y = fieldLine(y, 'Approval stages', stages.join(' → '));
       const deps = (acc.process.keyDeps || []);
       if (deps.length) y = fieldLine(y, 'Dependencies', deps.join(', '));
       y = divider(y + 2);
 
-      // ── Q4 ──
+      // ── Q4: Why do we win? ──
       if (y > PH - 45) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
       y = sectionTitle(y, '4. Why do we win?');
       if (acc.solution.solutions && acc.solution.solutions.length)
-        y = fieldLine(y, 'Solutions',        acc.solution.solutions.join(', '));
+        y = fieldLine(y, 'Solutions',       acc.solution.solutions.join(', '));
       const commStr = [acc.solution.commercialModel, acc.solution.dealValue].filter(Boolean).join(' · ');
-      y = fieldLine(y, 'Commercial',        commStr);
+      y = fieldLine(y, 'Commercial',       commStr);
       const valStr = [
-        acc.solution.savingsPerYear  ? acc.solution.savingsPerYear + ' savings/yr' : '',
-        acc.solution.carbonReduction ? acc.solution.carbonReduction + ' tCO2e'    : '',
-        acc.solution.roiPayback      || ''
+        acc.solution.savingsPerYear  ? `${acc.solution.savingsPerYear} savings/yr` : '',
+        acc.solution.carbonReduction ? `${acc.solution.carbonReduction} tCO2e`     : '',
+        acc.solution.roiPayback && !FUNDED_MODELS.has(acc.solution.commercialModel) ? acc.solution.roiPayback : ''
       ].filter(Boolean).join(' · ');
-      y = fieldLine(y, 'Customer value',    valStr);
-      y = fieldLine(y, 'Differentiator',    acc.competition.differentiator);
-      y = fieldLine(y, 'Why we win',        acc.competition.whyWeWin);
+      y = fieldLine(y, 'Customer value',   valStr);
+      y = fieldLine(y, 'Differentiator',   acc.competition.differentiator);
+      y = fieldLine(y, 'Why we win',       acc.competition.whyWeWin);
+      y = fieldLine(y, 'How it meets criteria', acc.solution.meetsCriteria);
       const comps = acc.competition.competitors.filter(c => c.name);
       if (comps.length)
         y = fieldLine(y, 'Competitors', comps.map(c => `${c.name} (${c.strength || '?'})`).join(', '));
       y = divider(y + 2);
 
-      // ── Q5 — risk table ──
+      // ── Q5: What could stop it? ──
       if (y > PH - 50) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
       y = sectionTitle(y, '5. What could stop it?');
+
+      // Risk table
       if (acc.risks.length) {
         doc.autoTable({
           ...tableDefaults,
           startY: y,
-          head: [['Description', 'Category', 'Likelihood', 'Impact', 'Mitigation', 'Owner']],
+          head: [['Risk Description', 'Category', 'Likelihood', 'Impact', 'Mitigation', 'Owner']],
           body: acc.risks.map(r => [
-            r.description || '—', r.category || '—',
-            r.likelihood  || '—', r.impact   || '—',
-            r.mitigation  || '—', r.owner    || '—'
+            r.description || '—',
+            r.category    || '—',
+            r.likelihood  || '—',
+            r.impact      || '—',
+            r.mitigation  || 'None identified',
+            r.owner       || '—'
           ]),
           didParseCell: data => {
             if (data.section === 'body') {
@@ -2936,19 +2996,41 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
                   val === 'High' ? C.red : val === 'Medium' ? C.yellow : C.green;
                 data.cell.styles.fontStyle = 'bold';
               }
+              // Highlight unmitigated critical risks
+              if (col === 4 && val === 'None identified') {
+                const row = data.row.raw;
+                if (row[2] === 'High' && row[3] === 'High') {
+                  data.cell.styles.textColor = C.red;
+                  data.cell.styles.fontStyle = 'bold';
+                }
+              }
             }
           },
-          columnStyles: { 0: { cellWidth: 42 }, 4: { cellWidth: 42 } }
+          columnStyles: { 0: { cellWidth: 40 }, 4: { cellWidth: 40 } }
         });
-        y = doc.lastAutoTable.finalY + 4;
+        y = doc.lastAutoTable.finalY + 5;
       } else {
-        color(C.muted); sz(8); norm();
+        color(C.bodyMuted); sz(8); norm();
         doc.text('No risks registered', MARGIN, y); y += 7;
       }
-      if (acc.competition.whyWeLose)
-        y = fieldLine(y, 'Why we could lose', acc.competition.whyWeLose);
 
-      // ── Action Plan table ──
+      // Competitive threats block
+      if (acc.competition.whyWeLose || acc.competition.riskLevel) {
+        if (y > PH - 30) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
+        color(C.bodyLabel); sz(8); bold();
+        doc.text('Competitive Threats', MARGIN, y);
+        y += 5;
+        if (acc.competition.riskLevel) {
+          const rlColor = acc.competition.riskLevel === 'High' ? C.red :
+                          acc.competition.riskLevel === 'Medium' ? C.yellow : C.green;
+          color(C.bodyLabel); sz(7.5); bold(); doc.text('Competitive risk level:', MARGIN, y);
+          color(rlColor);     sz(7.5); bold(); doc.text(acc.competition.riskLevel, MARGIN + 40, y);
+          y += 5.5;
+        }
+        y = fieldLine(y, 'Why we could lose', acc.competition.whyWeLose);
+      }
+
+      // ── Mutual Action Plan ──
       if (acc.actions.length) {
         if (y > PH - 50) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
         y = divider(y + 2);
@@ -2958,8 +3040,12 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
           startY: y,
           head: [['Action', 'Ameresco Owner', 'Client Owner', 'Due Date', 'Status', 'Category']],
           body: acc.actions.map(a => [
-            a.action || '—', a.amerescoOwner || '—', a.clientOwner || '—',
-            a.dueDate || '—', a.status || '—', a.category || '—'
+            a.action || '—',
+            a.amerescoOwner || '—',
+            a.clientOwner   || '—',
+            fmtDate(a.dueDate),
+            a.status   || '—',
+            a.category || '—'
           ]),
           didParseCell: data => {
             if (data.section === 'body' && data.column.index === 4) {
@@ -2967,7 +3053,7 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
               data.cell.styles.textColor =
                 v === 'Complete'    ? C.green  :
                 v === 'Blocked'     ? C.red    :
-                v === 'In Progress' ? C.accent : C.text;
+                v === 'In Progress' ? C.accent : C.tblText;
             }
           },
           columnStyles: { 0: { cellWidth: 55 } }
@@ -2977,32 +3063,34 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
 
       pageFooter(pageNum);
 
-      // ── AI Research Appendix (if populated) ──
+      // ── AI Research Appendix ──
       const hasResearch = RESEARCH_FIELDS.some(f => acc.research[f.key]);
       if (hasResearch) {
         doc.addPage(); pageNum++;
         pageHeader();
         y = 18;
 
-        color(C.muted); sz(8); bold();
-        doc.text(`Appendix: AI Research — ${acc.name}`, MARGIN, y);
-        y += 7;
+        color(C.navy); sz(10); bold();
+        doc.text(`Research Appendix — ${acc.name}`, MARGIN, y);
+        draw([200,210,220]); doc.setLineWidth(0.2);
+        doc.line(MARGIN, y + 2, PW - MARGIN, y + 2);
+        y += 9;
 
         RESEARCH_FIELDS.forEach(f => {
           if (!acc.research[f.key]) return;
           if (y > PH - 25) { doc.addPage(); pageNum++; pageHeader(); y = 18; }
-          color(C.blue); sz(7.5); bold();
+          color(C.bodyLabel); sz(8); bold();
           doc.text(f.label, MARGIN, y);
-          y += 4;
-          color(C.text); sz(8); norm();
+          y += 4.5;
+          color(C.bodyText); sz(8); norm();
           const lines = doc.splitTextToSize(acc.research[f.key], CW);
           doc.text(lines, MARGIN, y);
-          y += lines.length * 4 + 4;
+          y += lines.length * 4.5 + 4;
         });
 
         if (acc.research.lastUpdated) {
-          color(C.muted); sz(7); norm();
-          doc.text(`Research last updated: ${acc.research.lastUpdated}`, MARGIN, y);
+          color(C.bodyMuted); sz(7); norm();
+          doc.text(`Research updated: ${acc.research.lastUpdated}`, MARGIN, y);
         }
         pageFooter(pageNum);
       }
