@@ -918,6 +918,323 @@
   if (!getApiKey()) showApiModal();
 
   console.log('[AccountPlan] State management ready — 3 accounts loaded');
+
+  // ── DOM helpers ──────────────────────────────────────────────────────────────
+
+  // Create any element with className and optional children
+  function h(tag, className, ...children) {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    for (const c of children) {
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+
+  // Labelled form row: wraps a label + control in .form-row
+  function frow(labelText, control) {
+    const d = h('div', 'form-row');
+    const l = document.createElement('label');
+    l.textContent = labelText;
+    d.appendChild(l);
+    d.appendChild(control);
+    return d;
+  }
+
+  // <input> wired to a setter callback
+  function inp(type, value, setter, placeholder) {
+    const e = document.createElement('input');
+    e.type        = type;
+    e.value       = value || '';
+    e.placeholder = placeholder || '';
+    e.addEventListener('input', ev => setter(ev.target.value));
+    return e;
+  }
+
+  // <select> wired to a setter callback
+  // options: string[] | {value, label}[]
+  function sel(options, value, setter, placeholder) {
+    const e = document.createElement('select');
+    const ph = document.createElement('option');
+    ph.value = ''; ph.textContent = placeholder || 'Select…';
+    e.appendChild(ph);
+    for (const o of options) {
+      const opt = document.createElement('option');
+      const v = typeof o === 'string' ? o : o.value;
+      const l = typeof o === 'string' ? o : o.label;
+      opt.value = v; opt.textContent = l;
+      e.appendChild(opt);
+    }
+    e.value = value || '';
+    e.addEventListener('change', ev => setter(ev.target.value));
+    return e;
+  }
+
+  // <textarea> wired to a setter callback
+  function ta(value, setter, rows, placeholder) {
+    const e = document.createElement('textarea');
+    e.value       = value || '';
+    e.rows        = rows || 3;
+    e.placeholder = placeholder || '';
+    e.addEventListener('input', ev => setter(ev.target.value));
+    return e;
+  }
+
+  // Star-rating widget (1–5); calls setter(n) on click
+  function starsWidget(current, setter) {
+    const wrap = h('div', 'stars');
+    for (let i = 1; i <= 5; i++) {
+      const s = h('span', 'star' + (i <= (current || 0) ? ' active' : ''), '★');
+      s.addEventListener('click', () => setter(i));
+      // hover preview
+      s.addEventListener('mouseenter', () => {
+        wrap.querySelectorAll('.star').forEach((el, idx) =>
+          el.classList.toggle('active', idx < i)
+        );
+      });
+      wrap.addEventListener('mouseleave', () => {
+        wrap.querySelectorAll('.star').forEach((el, idx) =>
+          el.classList.toggle('active', idx < (current || 0))
+        );
+      });
+      wrap.appendChild(s);
+    }
+    return wrap;
+  }
+
+  // Toggle-chip group (single-select); calls setter(value) on pick
+  function chipGroup(options, current, setter) {
+    const wrap = h('div', 'check-group');
+    for (const o of options) {
+      const chip = h('div', 'check-item' + (o === current ? ' checked' : ''), o);
+      chip.addEventListener('click', () => {
+        wrap.querySelectorAll('.check-item').forEach(c => c.classList.remove('checked'));
+        chip.classList.add('checked');
+        setter(o);
+      });
+      wrap.appendChild(chip);
+    }
+    return wrap;
+  }
+
+  // Toggle-chip group (multi-select, uses array); mutates arr and calls refresh
+  function chipGroupMulti(options, arr, onToggle) {
+    const wrap = h('div', 'check-group');
+    for (const o of options) {
+      const chip = h('div', 'check-item' + (arr.includes(o) ? ' checked' : ''), o);
+      chip.addEventListener('click', () => {
+        const idx = arr.indexOf(o);
+        if (idx >= 0) arr.splice(idx, 1); else arr.push(o);
+        chip.classList.toggle('checked', arr.includes(o));
+        onToggle();
+      });
+      wrap.appendChild(chip);
+    }
+    return wrap;
+  }
+
+  // Pill multi-select (same API as chipGroupMulti, different visual)
+  function pillGroupMulti(options, arr, onToggle) {
+    const wrap = h('div', 'pill-group');
+    for (const o of options) {
+      const pill = h('div', 'pill' + (arr.includes(o) ? ' selected' : ''), o);
+      pill.addEventListener('click', () => {
+        const idx = arr.indexOf(o);
+        if (idx >= 0) arr.splice(idx, 1); else arr.push(o);
+        pill.classList.toggle('selected', arr.includes(o));
+        onToggle();
+      });
+      wrap.appendChild(pill);
+    }
+    return wrap;
+  }
+
+  // ── Section accordion ─────────────────────────────────────────────────────────
+
+  function makeSection(icon, title, badge, contentEl, openByDefault) {
+    const card = h('div', 'section-card' + (openByDefault ? ' open' : ''));
+
+    const hdr = h('div', 'section-header');
+    hdr.appendChild(h('span', 'section-icon', icon));
+    hdr.appendChild(h('span', 'section-title', title));
+    if (badge) hdr.appendChild(h('span', 'section-badge', badge));
+    hdr.appendChild(h('span', 'section-chevron', '▼'));
+    hdr.addEventListener('click', () => card.classList.toggle('open'));
+
+    const body = h('div', 'section-body');
+    body.appendChild(contentEl);
+
+    card.appendChild(hdr);
+    card.appendChild(body);
+    return card;
+  }
+
+  // ── Tab rendering ─────────────────────────────────────────────────────────────
+
+  function renderTabs() {
+    const nav = document.getElementById('accountTabs');
+    nav.innerHTML = '';
+    state.accounts.forEach((acc, i) => {
+      const btn = h('button', 'tab-btn' + (i === state.activeTab ? ' active' : ''),
+        acc.name || `Account ${i + 1}`
+      );
+      btn.addEventListener('click', () => {
+        state.activeTab = i;
+        saveState();
+        renderApp();
+      });
+      nav.appendChild(btn);
+    });
+  }
+
+  // ── Gap analysis ──────────────────────────────────────────────────────────────
+
+  function computeGaps(acc) {
+    const warnings = [];
+
+    // RED — critical blockers
+    if (!acc.problem.financialImpact)
+      warnings.push({ level: 'red', text: '🔴 Customer value not quantified' });
+
+    if (!acc.stakeholders.some(s => s.roleType === 'Economic Buyer' && s.name))
+      warnings.push({ level: 'red', text: '🔴 Economic buyer not mapped' });
+
+    if (acc.risks.some(r => r.likelihood === 'High' && r.impact === 'High' && !r.mitigation))
+      warnings.push({ level: 'red', text: '🔴 Unmanaged critical risk' });
+
+    // YELLOW — gaps to address
+    if (!acc.process.procurementRoute || acc.process.procurementRoute === 'Unknown')
+      warnings.push({ level: 'yellow', text: '🟡 Procurement route not established' });
+
+    if (acc.process.budgetConfirmed !== 'Yes')
+      warnings.push({ level: 'yellow', text: '🟡 Budget not confirmed' });
+
+    if (!acc.competition.competitors.some(c => c.name))
+      warnings.push({ level: 'yellow', text: '🟡 Competitive landscape not assessed' });
+
+    const in30 = new Date(Date.now() + 30 * 864e5);
+    const hasNearTerm = acc.actions.some(a =>
+      a.action && a.status !== 'Complete' && a.dueDate && new Date(a.dueDate) <= in30
+    );
+    if (!acc.actions.length || !hasNearTerm)
+      warnings.push({ level: 'yellow', text: '🟡 No near-term actions defined' });
+
+    return warnings;
+  }
+
+  function computeScore(acc) {
+    const gaps  = computeGaps(acc);
+    const reds  = gaps.filter(g => g.level === 'red').length;
+    const yells = gaps.filter(g => g.level === 'yellow').length;
+    return Math.max(0, 100 - reds * 20 - yells * 7);
+  }
+
+  // ── Health strip ──────────────────────────────────────────────────────────────
+
+  function renderHealthStrip(acc) {
+    const gaps  = computeGaps(acc);
+    const score = computeScore(acc);
+    const cls   = score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
+
+    const strip   = h('div', 'health-strip');
+    const scoreWrap = h('div', 'health-score');
+    const circle  = h('div', `score-circle ${cls}`, String(score));
+    const lbl     = h('div', 'score-label');
+    lbl.innerHTML = `<strong>Plan Health</strong>${gaps.length === 0 ? 'All checks passed ✓' : `${gaps.length} issue${gaps.length > 1 ? 's' : ''} found`}`;
+    scoreWrap.appendChild(circle);
+    scoreWrap.appendChild(lbl);
+
+    const warnWrap = h('div', 'health-warnings');
+    if (gaps.length === 0) {
+      warnWrap.appendChild(h('span', 'warning-tag green', '✓ Ready for deal review'));
+    } else {
+      gaps.forEach(g => warnWrap.appendChild(h('span', `warning-tag ${g.level}`, g.text)));
+    }
+
+    strip.appendChild(scoreWrap);
+    strip.appendChild(warnWrap);
+    return strip;
+  }
+
+  // Replaces the health strip in the DOM without a full re-render
+  function refreshHealth() {
+    const acc = getAccount();
+    const old = document.querySelector('.health-strip');
+    if (old) old.replaceWith(renderHealthStrip(acc));
+  }
+
+  // ── Section badge helpers ─────────────────────────────────────────────────────
+
+  function badge(text) { return text || null; }
+
+  // ── Main render ───────────────────────────────────────────────────────────────
+  // Sections 1–9 are defined in subsequent pieces; renderApp() calls stubs until
+  // those pieces are loaded — each stub returns a placeholder div.
+
+  function stubSection(name) {
+    const d = h('div', 'empty-state');
+    d.textContent = `${name} — coming in next build step`;
+    return d;
+  }
+
+  function renderApp() {
+    renderTabs();
+    const acc = getAccount();
+    const idx = state.activeTab;
+    const main = document.getElementById('accountContent');
+    main.innerHTML = '';
+
+    // Health strip (always visible)
+    main.appendChild(renderHealthStrip(acc));
+
+    // 9 sections — render functions filled in by pieces 5–8
+    main.appendChild(makeSection('🏢', 'Account Overview',
+      badge(acc.name || `Account ${idx + 1}`),
+      typeof renderOverview === 'function' ? renderOverview(acc) : stubSection('Account Overview'),
+      true
+    ));
+    main.appendChild(makeSection('🔍', 'AI Company Research',
+      badge(acc.research.lastUpdated ? 'Updated ' + acc.research.lastUpdated : ''),
+      typeof renderResearch === 'function' ? renderResearch(acc) : stubSection('AI Company Research')
+    ));
+    main.appendChild(makeSection('💡', 'Customer Problem & Value',
+      badge(acc.problem.financialImpact),
+      typeof renderProblem === 'function' ? renderProblem(acc) : stubSection('Customer Problem & Value')
+    ));
+    main.appendChild(makeSection('👥', 'Decision Architecture',
+      badge(acc.stakeholders.length ? `${acc.stakeholders.length} stakeholder${acc.stakeholders.length > 1 ? 's' : ''}` : ''),
+      typeof renderStakeholders === 'function' ? renderStakeholders(acc) : stubSection('Decision Architecture')
+    ));
+    main.appendChild(makeSection('⚙️', 'Decision Process',
+      badge(acc.process.procurementRoute),
+      typeof renderProcess === 'function' ? renderProcess(acc) : stubSection('Decision Process')
+    ));
+    main.appendChild(makeSection('🔋', 'Our Solution & Commercial Structure',
+      badge(acc.solution.dealValue),
+      typeof renderSolution === 'function' ? renderSolution(acc) : stubSection('Our Solution & Commercial Structure')
+    ));
+    main.appendChild(makeSection('⚔️', 'Competitive Position',
+      badge(acc.competition.riskLevel ? acc.competition.riskLevel + ' risk' : ''),
+      typeof renderCompetition === 'function' ? renderCompetition(acc) : stubSection('Competitive Position')
+    ));
+    main.appendChild(makeSection('📋', 'Mutual Action Plan',
+      badge(acc.actions.length ? `${acc.actions.length} action${acc.actions.length > 1 ? 's' : ''}` : ''),
+      typeof renderActions === 'function' ? renderActions(acc) : stubSection('Mutual Action Plan')
+    ));
+    main.appendChild(makeSection('⚠️', 'Risk Register',
+      badge(acc.risks.length ? `${acc.risks.length} risk${acc.risks.length > 1 ? 's' : ''}` : ''),
+      typeof renderRisks === 'function' ? renderRisks(acc) : stubSection('Risk Register')
+    ));
+  }
+
+  // ── Placeholder stubs for PDF / Deal Review (filled in piece 9+10) ────────────
+  function exportPDF()    { toast('PDF export coming in piece 10', 'info'); }
+  function openDealReview() { toast('Deal Review coming in piece 10', 'info'); }
+
+  // Boot
+  renderApp();
+  console.log('[AccountPlan] Render engine ready');
   </script>
 </body>
 </html>
