@@ -1229,8 +1229,158 @@
   }
 
   // ── Placeholder stubs for PDF / Deal Review (filled in piece 9+10) ────────────
-  function exportPDF()    { toast('PDF export coming in piece 10', 'info'); }
+  function exportPDF()      { toast('PDF export coming in piece 10', 'info'); }
   function openDealReview() { toast('Deal Review coming in piece 10', 'info'); }
+
+  // ── Section 1: Account Overview ───────────────────────────────────────────────
+
+  function renderOverview(acc) {
+    const wrap = h('div', 'form-grid');
+
+    wrap.appendChild(frow('Account Name',
+      inp('text', acc.name, v => { acc.name = v; saveState(); renderTabs(); },
+        'e.g. Northampton Borough Council')
+    ));
+    wrap.appendChild(frow('Website URL',
+      inp('url', acc.website, v => { acc.website = v; saveState(); }, 'https://')
+    ));
+    wrap.appendChild(frow('Industry',
+      sel(INDUSTRIES, acc.industry, v => { acc.industry = v; saveState(); })
+    ));
+    wrap.appendChild(frow('Account Status',
+      sel(STATUSES, acc.status, v => { acc.status = v; saveState(); })
+    ));
+    wrap.appendChild(frow('Deal Stage',
+      sel(STAGES, acc.stage, v => { acc.stage = v; saveState(); })
+    ));
+    wrap.appendChild(frow('Account Manager',
+      inp('text', acc.accountManager, v => { acc.accountManager = v; saveState(); }, 'Your name')
+    ));
+
+    return wrap;
+  }
+
+  // ── Section 2: AI Company Research ───────────────────────────────────────────
+
+  const RESEARCH_FIELDS = [
+    { key: 'overview',       label: 'Company Overview' },
+    { key: 'size',           label: 'Organisation Size & Structure' },
+    { key: 'hq',             label: 'Headquarters & Operations' },
+    { key: 'sustainability', label: 'Sustainability Commitments' },
+    { key: 'energyProjects', label: 'Energy / Infrastructure Projects' },
+    { key: 'news',           label: 'Recent News & Developments' },
+  ];
+
+  function renderResearch(acc) {
+    const wrap = h('div', '');
+
+    // Action row — Research button + timestamp
+    const actionRow = h('div', 'action-row');
+    const btn = h('button', 'btn btn-primary btn-sm', '🔍 Research Company');
+
+    if (acc.research.lastUpdated) {
+      actionRow.appendChild(
+        h('span', '', h('span', 'text-muted', `Last updated: ${acc.research.lastUpdated}`))
+      );
+      // rebuild: put timestamp in its own span with correct class
+      actionRow.innerHTML = '';
+      const ts = document.createElement('span');
+      ts.style.cssText = 'font-size:0.75rem;color:var(--text-muted);';
+      ts.textContent = `Last updated: ${acc.research.lastUpdated}`;
+      actionRow.appendChild(btn);
+      actionRow.appendChild(ts);
+    } else {
+      actionRow.appendChild(btn);
+    }
+
+    // Research fields display
+    const fieldsWrap = h('div', '');
+    fieldsWrap.style.marginTop = '0.75rem';
+
+    function buildFields() {
+      fieldsWrap.innerHTML = '';
+      RESEARCH_FIELDS.forEach(f => {
+        const block = h('div', 'research-block');
+        block.appendChild(h('div', 'rb-label', f.label));
+        const val = h('div', 'rb-value', acc.research[f.key] || '');
+        block.appendChild(val);
+        fieldsWrap.appendChild(block);
+      });
+    }
+    buildFields();
+
+    // Wire up button
+    btn.addEventListener('click', () => runCompanyResearch(acc, btn, fieldsWrap, buildFields));
+
+    wrap.appendChild(actionRow);
+    wrap.appendChild(fieldsWrap);
+    return wrap;
+  }
+
+  // ── Section 3: Customer Problem & Value ──────────────────────────────────────
+
+  function renderProblem(acc) {
+    const wrap = h('div', '');
+
+    // Problem statement — full width
+    const g1 = h('div', 'form-grid cols-1');
+    g1.appendChild(frow('Problem Statement',
+      ta(acc.problem.statement,
+        v => { acc.problem.statement = v; saveState(); },
+        3, 'What specific energy or sustainability problem does this customer face?')
+    ));
+    wrap.appendChild(g1);
+
+    // Three-column metrics row
+    const g2 = h('div', 'form-grid cols-3 mt-md');
+    g2.appendChild(frow('Financial Impact (£)',
+      inp('text', acc.problem.financialImpact,
+        v => { acc.problem.financialImpact = v; saveState(); refreshHealth(); },
+        'e.g. £250,000/yr energy cost')
+    ));
+    g2.appendChild(frow('Carbon Impact',
+      inp('text', acc.problem.carbonImpact,
+        v => { acc.problem.carbonImpact = v; saveState(); },
+        'e.g. 500 tCO2e/yr')
+    ));
+    g2.appendChild(frow('Urgency Driver',
+      inp('text', acc.problem.urgencyDriver,
+        v => { acc.problem.urgencyDriver = v; saveState(); },
+        'e.g. Net Zero 2030 target')
+    ));
+    g2.appendChild(frow('Urgency Date',
+      inp('date', acc.problem.urgencyDate,
+        v => { acc.problem.urgencyDate = v; saveState(); })
+    ));
+    g2.appendChild(frow('"Do Nothing" Consequence',
+      inp('text', acc.problem.doNothing,
+        v => { acc.problem.doNothing = v; saveState(); },
+        'e.g. Miss 2030 carbon target, rising energy costs')
+    ));
+    wrap.appendChild(g2);
+
+    // Decision criteria (up to 5)
+    const criSection = h('div', 'mt-lg');
+    const criLabel = document.createElement('label');
+    criLabel.textContent = 'Decision Criteria (up to 5)';
+    criSection.appendChild(criLabel);
+
+    const criList = h('div', 'criteria-list');
+    for (let i = 0; i < 5; i++) {
+      const item = h('div', 'criteria-item');
+      item.appendChild(h('span', 'criteria-num', `${i + 1}.`));
+      item.appendChild(
+        inp('text', acc.problem.criteria[i],
+          v => { acc.problem.criteria[i] = v; saveState(); },
+          `e.g. ${['Lowest whole-life cost', 'Carbon reduction evidence', 'Local supply chain', 'Minimal disruption', 'Strong references'][i]}`)
+      );
+      criList.appendChild(item);
+    }
+    criSection.appendChild(criList);
+    wrap.appendChild(criSection);
+
+    return wrap;
+  }
 
   // Boot
   renderApp();
