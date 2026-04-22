@@ -1975,6 +1975,214 @@
     return wrap;
   }
 
+  // ── Claude API core ───────────────────────────────────────────────────────────
+
+  async function callClaude(messages, systemPrompt, useWebSearch) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      showApiModal();
+      throw new Error('API key required — please enter your Anthropic API key.');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    };
+
+    if (useWebSearch) {
+      headers['anthropic-beta'] = 'web-search-2025-03-05';
+    }
+
+    const body = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages
+    };
+
+    if (useWebSearch) {
+      body.tools = [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5
+      }];
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      let errMsg = `API error ${res.status}`;
+      try {
+        const errBody = await res.json();
+        errMsg = errBody.error?.message || errMsg;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+
+    return res.json();
+  }
+
+  // Extract the final text block(s) from a response that may include tool_use blocks
+  function extractText(response) {
+    return (response.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+  }
+
+  // Robustly parse JSON that may be wrapped in a markdown code fence
+  function parseJSON(text) {
+    const patterns = [
+      /```json\s*([\s\S]+?)\s*```/i,
+      /```\s*([\s\S]+?)\s*```/,
+      /(\{[\s\S]+\})/
+    ];
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m) {
+        try { return JSON.parse(m[1]); } catch (_) {}
+      }
+    }
+    try { return JSON.parse(text); } catch (_) {}
+    return null;
+  }
+
+  // ── Company research ──────────────────────────────────────────────────────────
+
+  async function runCompanyResearch(acc, btn, fieldsWrap, rebuildFields) {
+    if (!acc.name && !acc.website) {
+      toast('Enter an account name or website URL first', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Researching…';
+
+    const spinner = h('div', 'ai-loading');
+    spinner.innerHTML = '<div class="ai-spinner"></div><span>Searching for company information…</span>';
+    fieldsWrap.prepend(spinner);
+
+    const query = [acc.name, acc.website ? `(${acc.website})` : '', acc.industry].filter(Boolean).join(' ');
+
+    const prompt = `Research this organisation for a B2B energy services sales context: "${query}".
+
+Use web search to find current, accurate information. Return ONLY a valid JSON object — no prose, no markdown, just the JSON — with exactly these six keys:
+
+{
+  "overview": "2–3 sentence description of what the organisation does and its scale",
+  "size": "employee count, turnover, number of sites if available",
+  "hq": "headquarters location and any major regional offices or sites",
+  "sustainability": "net zero targets, sustainability commitments, certifications, carbon reduction goals",
+  "energyProjects": "any known energy efficiency, renewable energy, or infrastructure projects past or present",
+  "news": "most recent news, announcements, leadership changes, or strategic initiatives relevant to energy procurement"
+}`;
+
+    try {
+      const response = await callClaude(
+        [{ role: 'user', content: prompt }],
+        'You are a business intelligence analyst supporting a B2B energy services sales team at Ameresco. Be factual, concise, and focus on information relevant to energy procurement, sustainability commitments, and capital investment decisions. Return only valid JSON as instructed.',
+        true
+      );
+
+      const text = extractText(response);
+      const data = parseJSON(text);
+
+      if (data && typeof data === 'object') {
+        // Merge in only the known keys so we don't overwrite lastUpdated
+        ['overview', 'size', 'hq', 'sustainability', 'energyProjects', 'news'].forEach(k => {
+          if (data[k]) acc.research[k] = data[k];
+        });
+      } else {
+        // Fallback: dump full text into overview
+        acc.research.overview = text.slice(0, 800);
+      }
+
+      acc.research.lastUpdated = new Date().toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      saveState();
+
+      spinner.remove();
+      rebuildFields();
+
+      // Update timestamp next to button
+      const existing = btn.parentElement.querySelector('.research-ts');
+      if (existing) existing.remove();
+      const ts = document.createElement('span');
+      ts.className = 'research-ts';
+      ts.style.cssText = 'font-size:0.75rem;color:var(--text-muted);';
+      ts.textContent = `Updated ${acc.research.lastUpdated}`;
+      btn.insertAdjacentElement('afterend', ts);
+
+      btn.disabled = false;
+      btn.textContent = '↺ Re-research';
+      toast('Company research complete', 'success');
+
+    } catch (e) {
+      spinner.remove();
+      btn.disabled = false;
+      btn.textContent = '🔍 Research Company';
+      toast(`Research failed: ${e.message}`, 'error');
+    }
+  }
+
+  // ── Contact / stakeholder research ───────────────────────────────────────────
+
+  async function runContactResearch(acc, s, btn, td) {
+    if (!s.name) {
+      toast('Enter a stakeholder name first', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳…';
+
+    const spinner = h('div', 'ai-loading');
+    spinner.innerHTML = '<div class="ai-spinner"></div>';
+    td.prepend(spinner);
+
+    const linkedinNote = s.linkedin ? ` LinkedIn: ${s.linkedin}` : '';
+    const orgNote      = acc.name   ? ` at ${acc.name}`          : '';
+    const query        = `${s.name}${s.title ? ', ' + s.title : ''}${orgNote}${linkedinNote}`;
+
+    const prompt = `Research this professional for a B2B sales briefing: "${query}".
+
+Find their professional background, career history, areas of expertise, and any public statements or articles relevant to energy, sustainability, or capital procurement.
+
+Return a clear 2–3 sentence professional summary suitable for a sales team briefing. Focus only on publicly available information. Be factual — do not speculate.`;
+
+    try {
+      const response = await callClaude(
+        [{ role: 'user', content: prompt }],
+        'You are a sales intelligence analyst at Ameresco. Provide factual, professional summaries based only on publicly available information. Keep summaries concise and relevant to energy services sales conversations.',
+        true
+      );
+
+      const text = extractText(response);
+      s.aiSummary = text.slice(0, 500);
+      saveState();
+
+      spinner.remove();
+      buildContactAICell(td, acc, s);
+
+      toast(`Research complete for ${s.name}`, 'success');
+
+    } catch (e) {
+      spinner.remove();
+      btn.disabled = false;
+      btn.textContent = '🔍 Research';
+      toast(`Research failed: ${e.message}`, 'error');
+    }
+  }
+
   // Boot
   renderApp();
   console.log('[AccountPlan] Render engine ready');
