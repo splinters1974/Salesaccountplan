@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     /* ── Variables ─────────────────────────────────────────────────────────── */
     :root {
@@ -628,6 +629,65 @@
       .header-actions .btn-sm:nth-child(1) { display: none; }
     }
 
+    /* ── Login Screen ─────────────────────────────────────────────────────── */
+    #loginScreen {
+      position: fixed; inset: 0; background: var(--navy); z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #loginScreen.hidden { display: none; }
+    .login-box {
+      background: var(--navy-lighter); border: 1px solid var(--border);
+      border-radius: 12px; padding: 2.5rem 2rem; width: 100%; max-width: 380px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .login-box .login-logo {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem;
+      font-weight: 700; letter-spacing: 0.12em; color: var(--text-muted);
+      text-transform: uppercase; margin-bottom: 1.75rem;
+    }
+    .login-box .login-logo span { color: var(--accent); }
+    .login-box h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .login-box p  { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+    .login-field  { margin-bottom: 1rem; }
+    .login-field label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .login-field input { width: 100%; box-sizing: border-box; }
+    .login-error { font-size: 0.8rem; color: var(--red); margin-top: 0.75rem; min-height: 1.2em; }
+    .login-footer { font-size: 0.72rem; color: var(--text-muted); text-align: center; margin-top: 1.25rem; }
+
+    /* ── Admin Panel ──────────────────────────────────────────────────────── */
+    #adminPanel { display: none; padding: 1.5rem 2rem; max-width: 1100px; margin: 0 auto; }
+    #adminPanel.visible { display: block; }
+    .admin-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .admin-header h2 { font-size: 1.3rem; font-weight: 700; flex: 1; }
+    .admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+    .admin-card {
+      background: var(--navy-lighter); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .admin-card:hover { border-color: var(--blue); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+    .admin-card-name { font-weight: 700; font-size: 1rem; margin-bottom: 0.15rem; }
+    .admin-card-email { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+    .admin-card-accounts { display: flex; flex-direction: column; gap: 0.3rem; }
+    .admin-acct-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
+    .admin-acct-row .acct-name { flex: 1; color: var(--text); }
+    .admin-acct-row .acct-stage { font-size: 0.72rem; color: var(--text-muted); }
+
+    /* Readonly mode — admin viewing someone else's plans */
+    body.readonly-mode input,
+    body.readonly-mode select,
+    body.readonly-mode textarea { pointer-events: none; opacity: 0.85; }
+    body.readonly-mode button:not(.readonly-allow) { pointer-events: none; opacity: 0.5; }
+    .readonly-banner {
+      background: rgba(243,156,18,0.12); border: 1px solid rgba(243,156,18,0.35);
+      color: var(--yellow); padding: 0.45rem 1rem; font-size: 0.82rem;
+      font-weight: 600; text-align: center; letter-spacing: 0.03em;
+    }
+
+    /* User pill in header */
+    .header-user { font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+    .header-user strong { color: var(--text); }
+
     /* ── SCOTSMAN Qualification ───────────────────────────────────────────── */
     .scotsman-score-bar {
       display: flex; align-items: center; gap: 1rem;
@@ -696,20 +756,23 @@
 </head>
 <body>
 
-  <!-- ── API Key Modal ──────────────────────────────────────────────────── -->
-  <div id="apiModal" class="modal-overlay hidden">
-    <div class="modal-box">
-      <h2>Anthropic API Key</h2>
-      <p class="modal-sub">Required for AI-powered company research and contact insights. Your key is used only in this browser session.</p>
-      <div class="form-row">
-        <label>API Key</label>
-        <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
+  <!-- ── Login Screen ──────────────────────────────────────────────────── -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <div class="login-logo">AMERESCO <span>/</span> Account Planning</div>
+      <h2>Sign in</h2>
+      <p>Enter your email and password to access your account plans.</p>
+      <div class="login-field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
       </div>
-      <div class="action-row mt-md">
-        <button class="btn btn-primary" style="flex:1" onclick="saveApiKey()">Save &amp; Continue</button>
-        <button class="btn btn-ghost" onclick="dismissApiModal()">Skip</button>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
       </div>
-      <p class="modal-note">Stored in your browser's local storage — persists between sessions.</p>
+      <button class="btn btn-primary" style="width:100%;margin-top:0.25rem" id="loginBtn" onclick="signIn()">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+      <div class="login-footer">Access is by invitation only — contact your administrator.</div>
     </div>
   </div>
 
@@ -718,15 +781,21 @@
     <header>
       <div class="header-logo">AMERESCO <span>/ Account Planning</span></div>
       <div class="header-actions">
-        <button class="btn btn-ghost btn-sm" onclick="exportPDF()">&#11015; Export PDF</button>
-        <button class="btn btn-primary btn-sm" onclick="openDealReview()">&#9654; Deal Review</button>
-        <button class="btn btn-ghost btn-sm btn-icon" onclick="showApiModal()" title="API Key Settings">&#128273;</button>
+        <span class="header-user" id="headerUser"></span>
+        <button class="btn btn-ghost btn-sm" onclick="exportPDF()" id="btnExport">&#11015; Export PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="openDealReview()" id="btnDealReview">&#9654; Deal Review</button>
+        <button class="btn btn-ghost btn-sm readonly-allow" onclick="signOut()" id="btnLogout" style="display:none">Sign out</button>
       </div>
     </header>
 
-    <nav class="account-tabs" id="accountTabs"></nav>
+    <!-- Readonly banner shown when admin views someone's plans -->
+    <div class="readonly-banner hidden" id="readonlyBanner"></div>
 
-    <main id="accountContent"></main>
+    <!-- Admin overview panel -->
+    <div id="adminPanel"></div>
+
+    <nav class="account-tabs" id="accountTabs" style="display:none"></nav>
+    <main id="accountContent" style="display:none"></main>
   </div>
 
   <!-- ── Deal Review Overlay ────────────────────────────────────────────── -->
@@ -737,6 +806,13 @@
 
   <script>
   'use strict';
+
+  // ── Supabase config — REPLACE THESE WITH YOUR PROJECT VALUES ─────────────────
+  // Get them from: Supabase Dashboard → Project Settings → API
+  const SUPABASE_URL      = 'YOUR_SUPABASE_URL';       // e.g. https://xxxx.supabase.co
+  const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';  // safe to expose (RLS enforces security)
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1028,6 +1104,7 @@
     } catch (e) {
       console.warn('[AccountPlan] State save error:', e);
     }
+    if (currentUser && !adminViewUser) debouncedSync();
   }
 
   // Initialise global state
@@ -1035,33 +1112,248 @@
 
   function getAccount()   { return state.accounts[state.activeTab]; }
 
-  // ── API Key (localStorage — persists across sessions) ────────────────────────
+  // ── Auth state ───────────────────────────────────────────────────────────────
 
-  function getApiKey() { return localStorage.getItem('ameresco_api_key') || ''; }
+  let currentUser   = null;
+  let isAdmin       = false;
+  let adminViewUser = null; // when admin is viewing another user's plans
 
-  function showApiModal() {
-    document.getElementById('apiKeyInput').value = getApiKey();
-    document.getElementById('apiModal').classList.remove('hidden');
-    setTimeout(() => document.getElementById('apiKeyInput').focus(), 50);
+  // Debounce helper for Supabase sync
+  let _syncTimer = null;
+  function debouncedSync() {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(syncToSupabase, 2000);
   }
 
-  function saveApiKey() {
-    const key = document.getElementById('apiKeyInput').value.trim();
-    if (key) {
-      localStorage.setItem('ameresco_api_key', key);
-      toast('API key saved', 'success');
+  async function syncToSupabase() {
+    if (!currentUser) return;
+    try {
+      await supabase.from('account_plans').upsert({
+        user_id:      currentUser.id,
+        display_name: currentUser.user_metadata?.display_name || currentUser.email,
+        data:         state,
+        updated_at:   new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    } catch (e) {
+      console.warn('[AccountPlan] Supabase sync error:', e);
     }
-    document.getElementById('apiModal').classList.add('hidden');
   }
 
-  function dismissApiModal() {
-    document.getElementById('apiModal').classList.add('hidden');
+  async function loadFromSupabase(userId) {
+    const { data, error } = await supabase
+      .from('account_plans')
+      .select('data')
+      .eq('user_id', userId)
+      .single();
+    if (error || !data) return null;
+    return data.data;
   }
 
-  // Allow Enter key in the API key input
-  document.getElementById('apiKeyInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') saveApiKey();
-  });
+  async function signIn() {
+    const email    = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errEl    = document.getElementById('loginError');
+    const btn      = document.getElementById('loginBtn');
+    errEl.textContent = '';
+    btn.textContent   = 'Signing in…';
+    btn.disabled      = true;
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    btn.textContent = 'Sign in';
+    btn.disabled    = false;
+
+    if (error) {
+      errEl.textContent = error.message;
+      return;
+    }
+    await onSignedIn(data.user);
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    currentUser   = null;
+    isAdmin       = false;
+    adminViewUser = null;
+    document.body.classList.remove('readonly-mode');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('btnLogout').style.display = 'none';
+    document.getElementById('headerUser').textContent = '';
+    document.getElementById('accountTabs').style.display = 'none';
+    document.getElementById('accountContent').style.display = 'none';
+    document.getElementById('adminPanel').classList.remove('visible');
+    document.getElementById('readonlyBanner').classList.add('hidden');
+  }
+
+  async function onSignedIn(user) {
+    currentUser = user;
+
+    // Check admin status
+    const { data: adminRow } = await supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    isAdmin = !!adminRow;
+
+    // Hide login, show app chrome
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('btnLogout').style.display = '';
+    const displayName = user.user_metadata?.display_name || user.email;
+    document.getElementById('headerUser').innerHTML =
+      `<strong>${displayName}</strong>${isAdmin ? ' · <em style="color:var(--accent)">Admin</em>' : ''}`;
+
+    if (isAdmin) {
+      await showAdminPanel();
+    } else {
+      await loadUserPlans(user.id);
+    }
+  }
+
+  async function loadUserPlans(userId) {
+    const remote = await loadFromSupabase(userId);
+    if (remote) {
+      // Merge remote state into local shape (ensures all fields present)
+      const merged = {
+        activeTab: typeof remote.activeTab === 'number' ? remote.activeTab : 0,
+        accounts: (remote.accounts || []).slice(0, 3).map((a, i) =>
+          deepMerge(defaultAccount(i + 1), a)
+        )
+      };
+      while (merged.accounts.length < 3) merged.accounts.push(defaultAccount(merged.accounts.length + 1));
+      Object.assign(state, merged);
+      saveState(); // persist locally too
+    }
+    showNormalApp();
+  }
+
+  function showNormalApp() {
+    document.getElementById('adminPanel').classList.remove('visible');
+    document.getElementById('accountTabs').style.display = '';
+    document.getElementById('accountContent').style.display = '';
+    document.getElementById('readonlyBanner').classList.add('hidden');
+    document.getElementById('btnExport').style.display = '';
+    document.getElementById('btnDealReview').style.display = '';
+    renderApp();
+  }
+
+  // ── Admin view ───────────────────────────────────────────────────────────────
+
+  async function showAdminPanel() {
+    document.getElementById('accountTabs').style.display = 'none';
+    document.getElementById('accountContent').style.display = 'none';
+    document.getElementById('adminPanel').classList.add('visible');
+    document.getElementById('btnExport').style.display = 'none';
+    document.getElementById('btnDealReview').style.display = 'none';
+
+    const panel = document.getElementById('adminPanel');
+    panel.innerHTML = '<div class="admin-header"><h2>All Account Plans</h2></div><p style="color:var(--text-muted);font-size:0.85rem">Loading…</p>';
+
+    const { data: plans, error } = await supabase
+      .from('account_plans')
+      .select('user_id, display_name, data, updated_at')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      panel.innerHTML = `<p style="color:var(--red)">Error loading plans: ${error.message}</p>`;
+      return;
+    }
+
+    renderAdminPanel(plans || []);
+  }
+
+  function renderAdminPanel(plans) {
+    const panel = document.getElementById('adminPanel');
+    panel.innerHTML = '';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'admin-header';
+    hdr.innerHTML = `<h2>All Account Plans</h2><span style="font-size:0.8rem;color:var(--text-muted)">${plans.length} salesperson${plans.length !== 1 ? 's' : ''}</span>`;
+    panel.appendChild(hdr);
+
+    if (plans.length === 0) {
+      panel.appendChild(Object.assign(document.createElement('p'), {
+        textContent: 'No plans saved yet.',
+        style: 'color:var(--text-muted)'
+      }));
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'admin-grid';
+
+    plans.forEach(row => {
+      const planData = row.data || {};
+      const accounts = planData.accounts || [];
+      const card = document.createElement('div');
+      card.className = 'admin-card';
+
+      const name  = row.display_name || row.user_id;
+      const updated = row.updated_at ? new Date(row.updated_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '—';
+
+      let accountsHTML = accounts.filter((_, i) => i < 3).map(a => {
+        if (!a.name) return '';
+        const score = computeScore(a);
+        const qs = computeQualScore(a);
+        const hasQ = SCOTSMAN_CRITERIA.some(c => a.qualification?.[c.key]?.rating);
+        const cls = score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
+        return `<div class="admin-acct-row">
+          <span class="acct-name">${a.name}</span>
+          <span class="acct-stage">${a.stage || ''}</span>
+          <span class="warning-tag ${cls}" style="font-size:0.65rem;padding:0.1rem 0.4rem">${score}</span>
+          ${hasQ ? `<span class="tab-qual-badge ${qualScoreClass(qs)}" style="font-size:0.62rem">Q:${qs}</span>` : ''}
+        </div>`;
+      }).filter(Boolean).join('');
+
+      card.innerHTML = `
+        <div class="admin-card-name">${name}</div>
+        <div class="admin-card-email">Last saved: ${updated}</div>
+        <div class="admin-card-accounts">${accountsHTML || '<span style="color:var(--text-muted);font-size:0.8rem">No accounts saved yet</span>'}</div>`;
+
+      card.addEventListener('click', () => viewAsAdmin(row));
+      grid.appendChild(card);
+    });
+
+    panel.appendChild(grid);
+  }
+
+  function viewAsAdmin(row) {
+    adminViewUser = row;
+    // Load their state into the app
+    const planData = row.data || {};
+    const merged = {
+      activeTab: 0,
+      accounts: (planData.accounts || []).slice(0, 3).map((a, i) =>
+        deepMerge(defaultAccount(i + 1), a)
+      )
+    };
+    while (merged.accounts.length < 3) merged.accounts.push(defaultAccount(merged.accounts.length + 1));
+    Object.assign(state, merged);
+
+    document.body.classList.add('readonly-mode');
+    const banner = document.getElementById('readonlyBanner');
+    banner.textContent = `Read-only: viewing ${row.display_name || row.user_id}'s plans`;
+    banner.classList.remove('hidden');
+
+    document.getElementById('adminPanel').classList.remove('visible');
+    document.getElementById('accountTabs').style.display = '';
+    document.getElementById('accountContent').style.display = '';
+    document.getElementById('btnExport').style.display = '';
+    document.getElementById('btnDealReview').style.display = '';
+
+    // Back button
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn btn-ghost btn-sm readonly-allow';
+    backBtn.textContent = '← All Plans';
+    backBtn.style.marginLeft = '1rem';
+    backBtn.onclick = () => {
+      document.body.classList.remove('readonly-mode');
+      adminViewUser = null;
+      showAdminPanel();
+    };
+    document.getElementById('headerUser').appendChild(backBtn);
+
+    renderApp();
+  }
 
   // ── Toast ────────────────────────────────────────────────────────────────────
 
@@ -1077,11 +1369,23 @@
     }, duration);
   }
 
-  // ── Prompt for API key on first load if not set ───────────────────────────────
+  // ── Boot: check for existing session ─────────────────────────────────────────
 
-  if (!getApiKey()) showApiModal();
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      onSignedIn(session.user);
+    }
+    // If no session, login screen is already visible
+  });
 
-  console.log('[AccountPlan] State management ready — 3 accounts loaded');
+  // Allow Enter key in login form
+  ['loginEmail', 'loginPassword'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') signIn();
+    });
+  });
+
+  console.log('[AccountPlan] Auth ready');
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
 
@@ -2444,28 +2748,14 @@
   // ── Claude API core ───────────────────────────────────────────────────────────
 
   async function callClaude(messages, systemPrompt, useWebSearch) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      showApiModal();
-      throw new Error('API key required — please enter your Anthropic API key.');
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    };
-
-    if (useWebSearch) {
-      headers['anthropic-beta'] = 'web-search-2025-03-05';
-    }
+    if (!currentUser) throw new Error('Not signed in.');
 
     const body = {
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
-      messages
+      messages,
+      _useWebSearch: !!useWebSearch
     };
 
     if (useWebSearch) {
@@ -2476,9 +2766,9 @@
       }];
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/.netlify/functions/claude-proxy', {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
 
