@@ -1268,7 +1268,8 @@
     btn.textContent = 'Set password';
     btn.disabled    = false;
     if (error) { errEl.textContent = error.message; return; }
-    // Password updated — sign in normally
+    // Clear the recovery session so the user must sign in fresh with their new password
+    await supabase.auth.signOut();
     showSignIn();
     document.getElementById('loginError').textContent = 'Password updated. Please sign in.';
   }
@@ -1460,6 +1461,10 @@
 
   // ── Boot: check for existing session ─────────────────────────────────────────
 
+  // Capture synchronously before Supabase clears the URL hash
+  const _bootHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const _isPasswordRecovery = _bootHash.get('type') === 'recovery';
+
   // Detect password-recovery redirect from Supabase reset email
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'PASSWORD_RECOVERY') {
@@ -1471,10 +1476,11 @@
   });
 
   supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
+    // Skip auto-login during password recovery — the new-password form handles it
+    if (session && !_isPasswordRecovery) {
       onSignedIn(session.user);
     }
-    // If no session, login screen is already visible
+    // If no session or in recovery flow, login screen is already visible
   });
 
   // Allow Enter key in login / reset forms
