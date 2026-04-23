@@ -887,31 +887,43 @@
   const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   // ── Company logo helpers (Clearbit Logo API) ─────────────────────────────────
-  function logoUrlFromWebsite(websiteUrl) {
+  function domainFromWebsite(websiteUrl) {
     if (!websiteUrl) return null;
     try {
       let url = websiteUrl.trim();
       if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
       const domain = new URL(url).hostname.replace(/^www\./, '');
-      if (!domain || !domain.includes('.')) return null;
-      return `https://logo.clearbit.com/${domain}`;
+      return (domain && domain.includes('.')) ? domain : null;
     } catch { return null; }
   }
 
+  function logoUrlFromWebsite(websiteUrl) {
+    const domain = domainFromWebsite(websiteUrl);
+    return domain ? `https://logo.clearbit.com/${domain}` : null;
+  }
+
+  function faviconUrlFromWebsite(websiteUrl) {
+    const domain = domainFromWebsite(websiteUrl);
+    return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : null;
+  }
+
   async function logoBase64ForPDF(websiteUrl) {
-    const src = logoUrlFromWebsite(websiteUrl);
-    if (!src) return null;
-    try {
-      const resp = await fetch(src);
-      if (!resp.ok) return null;
-      const blob = await resp.blob();
-      return await new Promise(resolve => {
-        const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
-    } catch { return null; }
+    const sources = [logoUrlFromWebsite(websiteUrl), faviconUrlFromWebsite(websiteUrl)].filter(Boolean);
+    for (const src of sources) {
+      try {
+        const resp = await fetch(src);
+        if (!resp.ok) continue;
+        const blob = await resp.blob();
+        const dataUrl = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload  = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+        if (dataUrl) return dataUrl;
+      } catch { continue; }
+    }
+    return null;
   }
 
   // ── Constants ───────────────────────────────────────────────────────────────
@@ -1964,13 +1976,19 @@
     logoPreviewWrap.style.display = 'none';
 
     function updateLogoPreview(url) {
-      const src = logoUrlFromWebsite(url);
-      if (src) {
-        logoPreviewImg.src = src;
-        logoPreviewWrap.style.display = '';
-      } else {
-        logoPreviewWrap.style.display = 'none';
-      }
+      const clearbitSrc = logoUrlFromWebsite(url);
+      const faviconSrc  = faviconUrlFromWebsite(url);
+      if (!clearbitSrc) { logoPreviewWrap.style.display = 'none'; return; }
+      logoPreviewImg.onerror = () => {
+        if (faviconSrc) {
+          logoPreviewImg.onerror = () => { logoPreviewWrap.style.display = 'none'; };
+          logoPreviewImg.src = faviconSrc;
+        } else {
+          logoPreviewWrap.style.display = 'none';
+        }
+      };
+      logoPreviewImg.src = clearbitSrc;
+      logoPreviewWrap.style.display = '';
     }
     urlInput.addEventListener('blur', () => updateLogoPreview(urlInput.value));
     updateLogoPreview(acc.website);
