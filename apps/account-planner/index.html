@@ -886,26 +886,27 @@
 
   const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ── Company logo fetcher (Clearbit Logo API) ─────────────────────────────────
-  async function fetchLogo(websiteUrl) {
+  // ── Company logo helpers (Clearbit Logo API) ─────────────────────────────────
+  function logoUrlFromWebsite(websiteUrl) {
     if (!websiteUrl) return null;
     try {
       const domain = new URL(websiteUrl).hostname.replace(/^www\./, '');
-      const src = `https://logo.clearbit.com/${domain}`;
-      return await new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width  = img.width  || 128;
-            canvas.height = img.height || 128;
-            canvas.getContext('2d').drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
-          } catch { resolve(null); }
-        };
-        img.onerror = () => resolve(null);
-        img.src = src;
+      return `https://logo.clearbit.com/${domain}`;
+    } catch { return null; }
+  }
+
+  async function logoBase64ForPDF(websiteUrl) {
+    const src = logoUrlFromWebsite(websiteUrl);
+    if (!src) return null;
+    try {
+      const resp = await fetch(src);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
       });
     } catch { return null; }
   }
@@ -1060,7 +1061,6 @@
       // Section 1 — Overview
       name:           n ? `Account ${n}` : '',
       website:        '',
-      logoDataUrl:    '',
       industry:       '',
       status:         '',
       stage:          '',
@@ -1950,39 +1950,30 @@
       inp('text', acc.name, v => { acc.name = v; saveState(); renderTabs(); },
         'e.g. Northampton Borough Council')
     ));
-    const urlInput = inp('url', acc.website, v => { acc.website = v; saveState(); }, 'https://');
+    const urlInput = inp('url', acc.website, v => { acc.website = v; saveState(); updateLogoPreview(v); }, 'https://');
     const logoPreviewWrap = h('div', 'logo-preview-wrap');
-    logoPreviewWrap.style.display = acc.logoDataUrl ? '' : 'none';
-    if (acc.logoDataUrl) {
-      const img = h('img', 'logo-preview-img');
-      img.src = acc.logoDataUrl;
-      img.alt = 'Company logo';
-      const lbl = h('span', 'logo-preview-label', 'Logo fetched from website');
-      logoPreviewWrap.appendChild(img);
-      logoPreviewWrap.appendChild(lbl);
-    }
-    const urlWrap = h('div', '');
-    urlWrap.appendChild(urlInput);
-    urlWrap.appendChild(logoPreviewWrap);
-    urlInput.addEventListener('blur', async () => {
-      const url = urlInput.value.trim();
-      if (!url || url === acc.logoDataUrl) return;
-      const dataUrl = await fetchLogo(url);
-      acc.logoDataUrl = dataUrl || '';
-      saveState();
-      logoPreviewWrap.innerHTML = '';
-      if (dataUrl) {
-        const img = h('img', 'logo-preview-img');
-        img.src = dataUrl;
-        img.alt = 'Company logo';
-        const lbl = h('span', 'logo-preview-label', 'Logo fetched from website');
-        logoPreviewWrap.appendChild(img);
-        logoPreviewWrap.appendChild(lbl);
+    const logoPreviewImg = h('img', 'logo-preview-img');
+    const logoPreviewLbl = h('span', 'logo-preview-label', 'Company logo');
+    logoPreviewImg.alt = 'Company logo';
+    logoPreviewImg.onerror = () => { logoPreviewWrap.style.display = 'none'; };
+    logoPreviewWrap.appendChild(logoPreviewImg);
+    logoPreviewWrap.appendChild(logoPreviewLbl);
+    logoPreviewWrap.style.display = 'none';
+
+    function updateLogoPreview(url) {
+      const src = logoUrlFromWebsite(url);
+      if (src) {
+        logoPreviewImg.src = src;
         logoPreviewWrap.style.display = '';
       } else {
         logoPreviewWrap.style.display = 'none';
       }
-    });
+    }
+    updateLogoPreview(acc.website);
+
+    const urlWrap = h('div', '');
+    urlWrap.appendChild(urlInput);
+    urlWrap.appendChild(logoPreviewWrap);
     wrap.appendChild(frow('Website URL', urlWrap));
     wrap.appendChild(frow('Industry',
       sel(INDUSTRIES, acc.industry, v => { acc.industry = v; saveState(); })
@@ -3158,10 +3149,12 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     const hdr = h('div', 'dr-header');
 
     const headerLeft = h('div', 'dr-header-left');
-    if (acc.logoDataUrl) {
+    const drLogoSrc = logoUrlFromWebsite(acc.website);
+    if (drLogoSrc) {
       const logoImg = h('img', 'dr-company-logo');
-      logoImg.src = acc.logoDataUrl;
+      logoImg.src = drLogoSrc;
       logoImg.alt = acc.name + ' logo';
+      logoImg.onerror = () => logoImg.remove();
       headerLeft.appendChild(logoImg);
     }
     const titleBlock = h('div', '');
@@ -3572,6 +3565,14 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
 
     let pageNum = 0;
 
+    // Pre-fetch logos as base64 for all accounts (needed before sync PDF rendering)
+    const logoCache = {};
+    await Promise.all(
+      state.accounts.filter(a => a.name && a.website).map(async a => {
+        logoCache[a.website] = await logoBase64ForPDF(a.website);
+      })
+    );
+
     // ════════════════════════════════════════════════════════════════════════════
     // COVER PAGE
     // ════════════════════════════════════════════════════════════════════════════
@@ -3616,10 +3617,11 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
       let ay = bandTop + 64;
       activeAccounts.forEach(a => {
         // Logo — centred above account name if available
-        if (a.logoDataUrl) {
+        const pdfLogo = logoCache[a.website];
+        if (pdfLogo) {
           const logoSize = 14;
           try {
-            doc.addImage(a.logoDataUrl, 'PNG', PW / 2 - logoSize / 2, ay - 1, logoSize, logoSize);
+            doc.addImage(pdfLogo, 'PNG', PW / 2 - logoSize / 2, ay - 1, logoSize, logoSize);
             ay += logoSize + 2;
           } catch (_) {}
         }
