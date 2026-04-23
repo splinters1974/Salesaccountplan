@@ -904,7 +904,7 @@
 
   function faviconUrlFromWebsite(websiteUrl) {
     const domain = domainFromWebsite(websiteUrl);
-    return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : null;
+    return domain ? `https://www.${domain}/favicon.ico` : null;
   }
 
   async function logoBase64ForPDF(websiteUrl) {
