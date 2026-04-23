@@ -536,6 +536,40 @@
       font-size: 0.875rem;
       margin-top: 0.3rem;
     }
+    .dr-header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .dr-company-logo {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: var(--navy-lighter);
+      border: 1px solid var(--border);
+      padding: 4px;
+      flex-shrink: 0;
+    }
+    .logo-preview-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .logo-preview-img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: var(--navy-lighter);
+      border: 1px solid var(--border);
+      padding: 3px;
+    }
+    .logo-preview-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
 
     .dr-grid {
       display: grid;
@@ -851,6 +885,31 @@
   const SUPABASE_ANON_KEY = 'sb_publishable_hVbX6UpvsnlN0j_5WasXeg_Za52cJ0e';
 
   const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ── Company logo helpers (Clearbit Logo API) ─────────────────────────────────
+  function logoUrlFromWebsite(websiteUrl) {
+    if (!websiteUrl) return null;
+    try {
+      const domain = new URL(websiteUrl).hostname.replace(/^www\./, '');
+      return `https://logo.clearbit.com/${domain}`;
+    } catch { return null; }
+  }
+
+  async function logoBase64ForPDF(websiteUrl) {
+    const src = logoUrlFromWebsite(websiteUrl);
+    if (!src) return null;
+    try {
+      const resp = await fetch(src);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch { return null; }
+  }
 
   // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1891,9 +1950,31 @@
       inp('text', acc.name, v => { acc.name = v; saveState(); renderTabs(); },
         'e.g. Northampton Borough Council')
     ));
-    wrap.appendChild(frow('Website URL',
-      inp('url', acc.website, v => { acc.website = v; saveState(); }, 'https://')
-    ));
+    const urlInput = inp('url', acc.website, v => { acc.website = v; saveState(); updateLogoPreview(v); }, 'https://');
+    const logoPreviewWrap = h('div', 'logo-preview-wrap');
+    const logoPreviewImg = h('img', 'logo-preview-img');
+    const logoPreviewLbl = h('span', 'logo-preview-label', 'Company logo');
+    logoPreviewImg.alt = 'Company logo';
+    logoPreviewImg.onerror = () => { logoPreviewWrap.style.display = 'none'; };
+    logoPreviewWrap.appendChild(logoPreviewImg);
+    logoPreviewWrap.appendChild(logoPreviewLbl);
+    logoPreviewWrap.style.display = 'none';
+
+    function updateLogoPreview(url) {
+      const src = logoUrlFromWebsite(url);
+      if (src) {
+        logoPreviewImg.src = src;
+        logoPreviewWrap.style.display = '';
+      } else {
+        logoPreviewWrap.style.display = 'none';
+      }
+    }
+    updateLogoPreview(acc.website);
+
+    const urlWrap = h('div', '');
+    urlWrap.appendChild(urlInput);
+    urlWrap.appendChild(logoPreviewWrap);
+    wrap.appendChild(frow('Website URL', urlWrap));
     wrap.appendChild(frow('Industry',
       sel(INDUSTRIES, acc.industry, v => { acc.industry = v; saveState(); })
     ));
@@ -3067,12 +3148,22 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     // ── Header ──
     const hdr = h('div', 'dr-header');
 
+    const headerLeft = h('div', 'dr-header-left');
+    const drLogoSrc = logoUrlFromWebsite(acc.website);
+    if (drLogoSrc) {
+      const logoImg = h('img', 'dr-company-logo');
+      logoImg.src = drLogoSrc;
+      logoImg.alt = acc.name + ' logo';
+      logoImg.onerror = () => logoImg.remove();
+      headerLeft.appendChild(logoImg);
+    }
     const titleBlock = h('div', '');
     titleBlock.appendChild(h('div', 'dr-account-name', acc.name || `Account ${idx + 1}`));
     const meta = h('div', 'dr-meta');
     meta.textContent = [acc.stage, acc.industry, acc.accountManager].filter(Boolean).join(' · ');
     titleBlock.appendChild(meta);
-    hdr.appendChild(titleBlock);
+    headerLeft.appendChild(titleBlock);
+    hdr.appendChild(headerLeft);
 
     const closeBtn = h('button', 'btn btn-ghost', '✕ Close');
     closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
@@ -3474,6 +3565,14 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
 
     let pageNum = 0;
 
+    // Pre-fetch logos as base64 for all accounts (needed before sync PDF rendering)
+    const logoCache = {};
+    await Promise.all(
+      state.accounts.filter(a => a.name && a.website).map(async a => {
+        logoCache[a.website] = await logoBase64ForPDF(a.website);
+      })
+    );
+
     // ════════════════════════════════════════════════════════════════════════════
     // COVER PAGE
     // ════════════════════════════════════════════════════════════════════════════
@@ -3517,6 +3616,15 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     if (activeAccounts.length) {
       let ay = bandTop + 64;
       activeAccounts.forEach(a => {
+        // Logo — centred above account name if available
+        const pdfLogo = logoCache[a.website];
+        if (pdfLogo) {
+          const logoSize = 14;
+          try {
+            doc.addImage(pdfLogo, 'PNG', PW / 2 - logoSize / 2, ay - 1, logoSize, logoSize);
+            ay += logoSize + 2;
+          } catch (_) {}
+        }
         color(C.white); sz(10); bold();
         doc.text(`• ${a.name}`, PW / 2, ay, { align: 'center' });
         if (a.accountManager) {
