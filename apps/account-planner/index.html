@@ -890,7 +890,10 @@
   function logoUrlFromWebsite(websiteUrl) {
     if (!websiteUrl) return null;
     try {
-      const domain = new URL(websiteUrl).hostname.replace(/^www\./, '');
+      let url = websiteUrl.trim();
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      const domain = new URL(url).hostname.replace(/^www\./, '');
+      if (!domain || !domain.includes('.')) return null;
       return `https://logo.clearbit.com/${domain}`;
     } catch { return null; }
   }
@@ -1950,7 +1953,7 @@
       inp('text', acc.name, v => { acc.name = v; saveState(); renderTabs(); },
         'e.g. Northampton Borough Council')
     ));
-    const urlInput = inp('url', acc.website, v => { acc.website = v; saveState(); updateLogoPreview(v); }, 'https://');
+    const urlInput = inp('url', acc.website, v => { acc.website = v; saveState(); }, 'https://');
     const logoPreviewWrap = h('div', 'logo-preview-wrap');
     const logoPreviewImg = h('img', 'logo-preview-img');
     const logoPreviewLbl = h('span', 'logo-preview-label', 'Company logo');
@@ -1969,6 +1972,7 @@
         logoPreviewWrap.style.display = 'none';
       }
     }
+    urlInput.addEventListener('blur', () => updateLogoPreview(urlInput.value));
     updateLogoPreview(acc.website);
 
     const urlWrap = h('div', '');
