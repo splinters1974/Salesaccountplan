@@ -653,6 +653,9 @@
     .login-field input { width: 100%; box-sizing: border-box; }
     .login-error { font-size: 0.8rem; color: var(--red); margin-top: 0.75rem; min-height: 1.2em; }
     .login-footer { font-size: 0.72rem; color: var(--text-muted); text-align: center; margin-top: 1.25rem; }
+    .login-forgot { font-size: 0.78rem; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; display: block; text-align: right; margin-top: 0.3rem; }
+    .login-forgot:hover { opacity: 0.8; }
+    .login-success { font-size: 0.8rem; color: #4caf50; margin-top: 0.75rem; min-height: 1.2em; }
 
     /* ── Admin Panel ──────────────────────────────────────────────────────── */
     #adminPanel { display: none; padding: 1.5rem 2rem; max-width: 1100px; margin: 0 auto; }
@@ -758,7 +761,8 @@
 
   <!-- ── Login Screen ──────────────────────────────────────────────────── -->
   <div id="loginScreen">
-    <div class="login-box">
+    <!-- Sign-in form -->
+    <div class="login-box" id="loginForm">
       <div class="login-logo">AMERESCO <span>/</span> Account Planning</div>
       <h2>Sign in</h2>
       <p>Enter your email and password to access your account plans.</p>
@@ -769,10 +773,43 @@
       <div class="login-field">
         <label>Password</label>
         <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+        <button class="login-forgot" onclick="showForgotPassword()">Forgot password?</button>
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:0.25rem" id="loginBtn" onclick="signIn()">Sign in</button>
       <div class="login-error" id="loginError"></div>
       <div class="login-footer">Access is by invitation only — contact your administrator.</div>
+    </div>
+
+    <!-- Forgot password form -->
+    <div class="login-box hidden" id="forgotForm">
+      <div class="login-logo">AMERESCO <span>/</span> Account Planning</div>
+      <h2>Reset password</h2>
+      <p>Enter your email and we'll send you a reset link.</p>
+      <div class="login-field">
+        <label>Email</label>
+        <input type="email" id="resetEmail" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:0.25rem" id="resetBtn" onclick="sendResetEmail()">Send reset link</button>
+      <div class="login-error" id="resetError"></div>
+      <div class="login-success" id="resetSuccess"></div>
+      <div class="login-footer"><button class="login-forgot" onclick="showSignIn()">Back to sign in</button></div>
+    </div>
+
+    <!-- New password form (shown after clicking email reset link) -->
+    <div class="login-box hidden" id="newPasswordForm">
+      <div class="login-logo">AMERESCO <span>/</span> Account Planning</div>
+      <h2>Set new password</h2>
+      <p>Enter your new password below.</p>
+      <div class="login-field">
+        <label>New password</label>
+        <input type="password" id="newPassword" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="login-field">
+        <label>Confirm password</label>
+        <input type="password" id="confirmPassword" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:0.25rem" id="newPasswordBtn" onclick="updatePassword()">Set password</button>
+      <div class="login-error" id="newPasswordError"></div>
     </div>
   </div>
 
@@ -1184,6 +1221,58 @@
     document.getElementById('readonlyBanner').classList.add('hidden');
   }
 
+  function showForgotPassword() {
+    document.getElementById('loginForm').classList.add('hidden');
+    document.getElementById('forgotForm').classList.remove('hidden');
+    document.getElementById('newPasswordForm').classList.add('hidden');
+    document.getElementById('resetEmail').value = document.getElementById('loginEmail').value;
+    document.getElementById('resetError').textContent = '';
+    document.getElementById('resetSuccess').textContent = '';
+  }
+
+  function showSignIn() {
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.getElementById('forgotForm').classList.add('hidden');
+    document.getElementById('newPasswordForm').classList.add('hidden');
+  }
+
+  async function sendResetEmail() {
+    const email = document.getElementById('resetEmail').value.trim();
+    const errEl = document.getElementById('resetError');
+    const okEl  = document.getElementById('resetSuccess');
+    const btn   = document.getElementById('resetBtn');
+    errEl.textContent = '';
+    okEl.textContent  = '';
+    if (!email) { errEl.textContent = 'Please enter your email.'; return; }
+    btn.textContent = 'Sending…';
+    btn.disabled    = true;
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    btn.textContent = 'Send reset link';
+    btn.disabled    = false;
+    if (error) { errEl.textContent = error.message; return; }
+    okEl.textContent = 'Reset link sent — check your email.';
+  }
+
+  async function updatePassword() {
+    const pw1   = document.getElementById('newPassword').value;
+    const pw2   = document.getElementById('confirmPassword').value;
+    const errEl = document.getElementById('newPasswordError');
+    const btn   = document.getElementById('newPasswordBtn');
+    errEl.textContent = '';
+    if (pw1.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+    if (pw1 !== pw2)    { errEl.textContent = 'Passwords do not match.'; return; }
+    btn.textContent = 'Saving…';
+    btn.disabled    = true;
+    const { error } = await supabase.auth.updateUser({ password: pw1 });
+    btn.textContent = 'Set password';
+    btn.disabled    = false;
+    if (error) { errEl.textContent = error.message; return; }
+    // Password updated — sign in normally
+    showSignIn();
+    document.getElementById('loginError').textContent = 'Password updated. Please sign in.';
+  }
+
   async function onSignedIn(user) {
     currentUser = user;
 
@@ -1371,6 +1460,16 @@
 
   // ── Boot: check for existing session ─────────────────────────────────────────
 
+  // Detect password-recovery redirect from Supabase reset email
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      document.getElementById('loginScreen').classList.remove('hidden');
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('forgotForm').classList.add('hidden');
+      document.getElementById('newPasswordForm').classList.remove('hidden');
+    }
+  });
+
   supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) {
       onSignedIn(session.user);
@@ -1378,10 +1477,18 @@
     // If no session, login screen is already visible
   });
 
-  // Allow Enter key in login form
+  // Allow Enter key in login / reset forms
   ['loginEmail', 'loginPassword'].forEach(id => {
     document.getElementById(id).addEventListener('keydown', e => {
       if (e.key === 'Enter') signIn();
+    });
+  });
+  document.getElementById('resetEmail').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendResetEmail();
+  });
+  ['newPassword', 'confirmPassword'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') updatePassword();
     });
   });
 
