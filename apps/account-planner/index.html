@@ -645,6 +645,114 @@
       to   { transform: translateX(0);   opacity: 1; }
     }
 
+    /* ── Deal Coach ────────────────────────────────────────────────────────── */
+    .coach-summary-banner {
+      border-radius: var(--radius);
+      padding: 0.85rem 1.1rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+    .coach-summary-banner.high { background: rgba(39,174,96,0.15);  border: 1px solid var(--green);  color: #7be3a5; }
+    .coach-summary-banner.med  { background: rgba(200,130,10,0.15); border: 1px solid var(--yellow); color: #e6b84a; }
+    .coach-summary-banner.low  { background: rgba(210,50,40,0.15);  border: 1px solid var(--red);    color: #f07070; }
+
+    .coach-section-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--blue-light);
+      margin: 0 0 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .coach-priority-card {
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.85rem;
+      margin-bottom: 0.65rem;
+    }
+    .coach-rank {
+      min-width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--navy);
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .coach-priority-body { flex: 1; }
+    .coach-priority-action { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; }
+    .coach-priority-rationale { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+    .coach-owner-chip {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      background: var(--navy-lighter);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .coach-gap-pill {
+      background: rgba(210,50,40,0.1);
+      border: 1px solid var(--red);
+      border-radius: var(--radius);
+      padding: 0.7rem 0.85rem;
+      margin-bottom: 0.55rem;
+      font-size: 0.82rem;
+    }
+    .coach-gap-pill strong { color: #f07070; display: block; margin-bottom: 0.25rem; }
+    .coach-gap-evidence { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .coach-stakeholder-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 0.85rem;
+      margin-bottom: 0.55rem;
+      font-size: 0.83rem;
+    }
+    .coach-stakeholder-name { font-weight: 600; margin-bottom: 0.25rem; }
+    .coach-stakeholder-opener {
+      font-style: italic;
+      color: var(--accent);
+      font-size: 0.8rem;
+      margin-top: 0.35rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid var(--border);
+    }
+    .coach-risk-card {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 0.85rem;
+      margin-bottom: 0.55rem;
+      font-size: 0.83rem;
+    }
+    .coach-urgency-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .coach-urgency-badge.high { background: rgba(210,50,40,0.2);  color: #f07070; }
+    .coach-urgency-badge.med  { background: rgba(200,130,10,0.2); color: #e6b84a; }
+
     /* ── Scrollbar ─────────────────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: var(--navy); }
@@ -872,6 +980,9 @@
 
   <!-- ── Deal Review Overlay ────────────────────────────────────────────── -->
   <div id="dealReview" class="deal-review-overlay hidden"></div>
+
+  <!-- ── Deal Coach Overlay ─────────────────────────────────────────────── -->
+  <div id="dealCoachOverlay" class="deal-review-overlay hidden"></div>
 
   <!-- ── Toast Container ───────────────────────────────────────────────── -->
   <div class="toast-container" id="toastContainer"></div>
@@ -1845,6 +1956,11 @@
     }
 
     strip.appendChild(warnWrap);
+
+    const coachBtn = h('button', 'btn btn-primary btn-sm', '🧠 Deal Coach');
+    coachBtn.addEventListener('click', openDealCoach);
+    strip.appendChild(coachBtn);
+
     return strip;
   }
 
@@ -3027,6 +3143,262 @@
     return null;
   }
 
+  // ── Deal Coach ────────────────────────────────────────────────────────────────
+
+  function buildDealContext(acc) {
+    const eb = acc.stakeholders.find(s => s.roleType === 'Economic Buyer' && s.name);
+    const openActions = acc.actions.filter(a => a.action && a.status !== 'Complete');
+    const critRisks   = acc.risks.filter(r => r.likelihood === 'High' && r.impact === 'High');
+    const qs          = computeQualScore(acc);
+    const gaps        = computeGaps(acc);
+    const scotsman    = SCOTSMAN_CRITERIA.map(c => {
+      const q = acc.qualification?.[c.key];
+      return `  ${c.label}: ${q?.rating || 'Unknown'}${q?.notes ? ` — ${q.notes}` : ''}`;
+    }).join('\n');
+
+    return [
+      `Account: ${acc.name || '(unnamed)'} | Stage: ${acc.stage || 'Not set'} | Industry: ${acc.industry || 'Not set'}`,
+      `Deal Value: ${acc.solution?.dealValue || 'Not entered'} | Contract Date: ${acc.process?.contractDate || 'Not set'}`,
+      `Plan Health: ${computeScore(acc)}/100 | SCOTSMAN: ${qs}/100`,
+      '',
+      `PROBLEM: ${acc.problem?.statement || 'Not defined'}`,
+      `Energy spend: ${acc.problem?.financialImpact || 'Not entered'} | Do nothing: ${acc.problem?.doNothing || 'Not defined'}`,
+      `Urgency: ${(acc.problem?.urgencyDrivers || []).join(', ') || 'None'} by ${acc.problem?.urgencyDate || 'No date'}`,
+      `Decision criteria: ${(acc.problem?.criteria || []).filter(Boolean).join('; ') || 'None captured'}`,
+      '',
+      `STAKEHOLDERS (${acc.stakeholders.filter(s => s.name).length}):`,
+      ...acc.stakeholders.filter(s => s.name).map(s =>
+        `  ${s.name} (${s.roleType || 'No role'}, ${s.stance || 'Unknown'}, Power:${s.power || '?'}) — WIIFM: ${s.personalWin || 'Not captured'}`
+      ),
+      '',
+      `SOLUTION: ${(acc.solution?.solutions || []).join(', ') || 'Not defined'} via ${acc.solution?.commercialModel || 'Not set'}`,
+      `Savings: ${acc.solution?.savingsPerYear || 'Not entered'}/yr | Carbon: ${acc.solution?.carbonReduction || 'Not entered'}`,
+      `Differentiator: ${acc.competition?.differentiator || 'Not defined'}`,
+      `Why we win: ${acc.competition?.whyWeWin || 'Not defined'}`,
+      `Why we could lose: ${acc.competition?.whyWeLose || 'Not defined'}`,
+      `Competitive risk: ${acc.competition?.riskLevel || 'Not assessed'}`,
+      '',
+      `SCOTSMAN RATINGS:\n${scotsman}`,
+      '',
+      `OPEN ACTIONS (${openActions.length}):`,
+      ...openActions.map(a => `  ${a.action} (Due:${a.dueDate || 'No date'}, Owner:${a.amerescoOwner || 'Unassigned'})`),
+      openActions.length === 0 ? '  None' : '',
+      '',
+      `CRITICAL UNMITIGATED RISKS:`,
+      ...critRisks.filter(r => !r.mitigation).map(r => `  ${r.description}`),
+      critRisks.filter(r => !r.mitigation).length === 0 ? '  None' : '',
+      '',
+      `PLAN GAPS: ${gaps.length ? gaps.map(g => g.text.replace(/[🔴🟡]/u, '').trim()).join(' | ') : 'None'}`,
+    ].join('\n');
+  }
+
+  async function openDealCoach() {
+    const acc = getAccount();
+    if (!acc.name) { toast('Add an account name first', 'error'); return; }
+
+    const overlay = document.getElementById('dealCoachOverlay');
+    overlay.innerHTML = '';
+    overlay.classList.remove('hidden');
+
+    // ── Header ──
+    const hdr = h('div', 'dr-header');
+    const titleBlock = h('div', '');
+    titleBlock.appendChild(h('div', 'dr-account-name', acc.name));
+    const sub = h('div', 'dr-meta');
+    sub.textContent = `Deal Coach  ·  ${new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}`;
+    titleBlock.appendChild(sub);
+    hdr.appendChild(titleBlock);
+    const closeBtn = h('button', 'btn btn-ghost', '✕ Close');
+    closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+    hdr.appendChild(closeBtn);
+    overlay.appendChild(hdr);
+
+    // ── Spinner ──
+    const spinner = h('div', 'ai-loading');
+    spinner.innerHTML = '<div class="ai-spinner"></div><span>Analysing your deal…</span>';
+    overlay.appendChild(spinner);
+
+    let result;
+    try {
+      const systemPrompt = `You are an expert B2B energy services deal coach for Ameresco. \
+Analyse account plan data and produce specific, actionable coaching guidance for the salesperson. \
+Be direct — name individuals, name gaps, name exact next steps. Do not use filler phrases. \
+Return valid JSON only with no markdown fencing.`;
+
+      const userMsg = `Analyse this deal and return a JSON coaching brief.
+
+Return this exact JSON structure:
+{
+  "coachSummary": "One sentence overall deal health assessment",
+  "weekPriorities": [
+    { "rank": 1, "action": "Specific action", "rationale": "Why this matters now", "owner": "Ameresco|Client|Both" },
+    { "rank": 2, "action": "...", "rationale": "...", "owner": "..." },
+    { "rank": 3, "action": "...", "rationale": "...", "owner": "..." }
+  ],
+  "scotsmanGaps": [
+    { "criterion": "Authority", "currentRating": "Weak", "gapExplanation": "What is missing", "evidenceToGather": "Specific evidence needed" }
+  ],
+  "stakeholderRecs": [
+    { "name": "Person name", "roleType": "Their role", "stance": "Their stance", "recommendation": "What to do with this person", "suggestedOpener": "Opening message or question to use" }
+  ],
+  "keyRisks": [
+    { "risk": "Risk description", "urgency": "High", "mitigation": "Recommended mitigation" }
+  ]
+}
+
+Rules:
+- weekPriorities: always exactly 3, most important first
+- scotsmanGaps: only include Weak or Unknown rated criteria (skip Strong/Partial)
+- stakeholderRecs: only include stakeholders where specific action is needed
+- keyRisks: top 3 unresolved risks only (do not include already-mitigated risks)
+
+DEAL DATA:
+${buildDealContext(acc)}`;
+
+      const response = await callClaude(
+        [{ role: 'user', content: userMsg }],
+        systemPrompt,
+        false
+      );
+      const text = extractText(response);
+      result = parseJSON(text);
+      if (!result) throw new Error('Could not parse coaching response.');
+    } catch (e) {
+      spinner.remove();
+      const errEl = h('div', 'coach-summary-banner low');
+      errEl.textContent = `Coach unavailable: ${e.message}. Please try again.`;
+      overlay.appendChild(errEl);
+      return;
+    }
+
+    spinner.remove();
+
+    // ── Summary banner ──
+    const score = computeScore(acc);
+    const bannerCls = score >= 70 ? 'high' : score >= 40 ? 'med' : 'low';
+    const banner = h('div', `coach-summary-banner ${bannerCls}`, result.coachSummary || '');
+    overlay.appendChild(banner);
+
+    // ── Two-column grid ──
+    const grid = h('div', 'dr-grid');
+
+    // Left: Top 3 Priorities
+    const priCard = h('div', 'dr-card');
+    priCard.appendChild(h('h3', 'coach-section-title', 'Your Top 3 This Week'));
+    (result.weekPriorities || []).forEach(p => {
+      const card = h('div', 'coach-priority-card');
+      const rank = h('div', 'coach-rank', String(p.rank || ''));
+      const body = h('div', 'coach-priority-body');
+      body.appendChild(h('div', 'coach-priority-action', p.action || ''));
+      body.appendChild(h('div', 'coach-priority-rationale', p.rationale || ''));
+      body.appendChild(h('span', 'coach-owner-chip', `Owner: ${p.owner || 'Ameresco'}`));
+      card.appendChild(rank);
+      card.appendChild(body);
+      priCard.appendChild(card);
+    });
+    grid.appendChild(priCard);
+
+    // Right column: SCOTSMAN Gaps + Stakeholder Recs
+    const rightCol = h('div', '');
+
+    const gapCard = h('div', 'dr-card');
+    gapCard.style.marginBottom = '1rem';
+    gapCard.appendChild(h('h3', 'coach-section-title', 'SCOTSMAN Gaps'));
+    const gaps2 = result.scotsmanGaps || [];
+    if (gaps2.length === 0) {
+      gapCard.appendChild(h('div', 'dr-field', '✓ No critical gaps identified'));
+    } else {
+      gaps2.forEach(g => {
+        const pill = h('div', 'coach-gap-pill');
+        const titleEl = h('strong', '', `${g.criterion}: ${g.currentRating || ''}`);
+        pill.appendChild(titleEl);
+        pill.appendChild(document.createTextNode(g.gapExplanation || ''));
+        if (g.evidenceToGather) {
+          const ev = h('div', 'coach-gap-evidence', `Gather: ${g.evidenceToGather}`);
+          pill.appendChild(ev);
+        }
+        gapCard.appendChild(pill);
+      });
+    }
+    rightCol.appendChild(gapCard);
+
+    const stakCard = h('div', 'dr-card');
+    stakCard.appendChild(h('h3', 'coach-section-title', 'Stakeholder Actions'));
+    const srecs = result.stakeholderRecs || [];
+    if (srecs.length === 0) {
+      stakCard.appendChild(h('div', 'dr-field', '✓ No specific actions flagged'));
+    } else {
+      srecs.forEach(s => {
+        const card = h('div', 'coach-stakeholder-card');
+        const nameEl = h('div', 'coach-stakeholder-name', `${s.name || 'Unknown'} · ${s.roleType || ''}`);
+        card.appendChild(nameEl);
+        card.appendChild(document.createTextNode(s.recommendation || ''));
+        if (s.suggestedOpener) {
+          card.appendChild(h('div', 'coach-stakeholder-opener', `"${s.suggestedOpener}"`));
+        }
+        stakCard.appendChild(card);
+      });
+    }
+    rightCol.appendChild(stakCard);
+
+    grid.appendChild(rightCol);
+    overlay.appendChild(grid);
+
+    // ── Full-width: Key Risks ──
+    const riskCard = h('div', 'dr-card');
+    riskCard.style.marginTop = '1rem';
+    riskCard.appendChild(h('h3', 'coach-section-title', 'Key Risks to Address'));
+    const risks = result.keyRisks || [];
+    if (risks.length === 0) {
+      riskCard.appendChild(h('div', 'dr-field', '✓ No critical risks flagged'));
+    } else {
+      risks.forEach(r => {
+        const card = h('div', 'coach-risk-card');
+        const urgCls = (r.urgency || '').toLowerCase() === 'high' ? 'high' : 'med';
+        card.appendChild(h('span', `coach-urgency-badge ${urgCls}`, r.urgency || 'Med'));
+        const body = h('div', '');
+        body.appendChild(h('div', '', r.risk || ''));
+        if (r.mitigation) body.appendChild(h('div', 'coach-gap-evidence', `Mitigation: ${r.mitigation}`));
+        card.appendChild(body);
+        riskCard.appendChild(card);
+      });
+    }
+    overlay.appendChild(riskCard);
+
+    // ── Footer: Copy + Close ──
+    const footer = h('div', '');
+    footer.style.cssText = 'display:flex;gap:0.75rem;margin-top:1.5rem;justify-content:flex-end;';
+    const copyBtn = h('button', 'btn btn-ghost', '📋 Copy as Text');
+    copyBtn.addEventListener('click', () => {
+      const lines = [
+        `DEAL COACH — ${acc.name}`,
+        `${new Date().toLocaleDateString('en-GB')}`,
+        '',
+        result.coachSummary || '',
+        '',
+        'TOP 3 PRIORITIES THIS WEEK:',
+        ...(result.weekPriorities || []).map(p => `${p.rank}. ${p.action}\n   ${p.rationale}\n   Owner: ${p.owner}`),
+        '',
+        'SCOTSMAN GAPS:',
+        ...(result.scotsmanGaps || []).map(g => `• ${g.criterion} (${g.currentRating}): ${g.gapExplanation}\n  Gather: ${g.evidenceToGather}`),
+        '',
+        'STAKEHOLDER ACTIONS:',
+        ...(result.stakeholderRecs || []).map(s => `• ${s.name} (${s.roleType}): ${s.recommendation}\n  Opener: "${s.suggestedOpener}"`),
+        '',
+        'KEY RISKS:',
+        ...(result.keyRisks || []).map(r => `• [${r.urgency}] ${r.risk}\n  Mitigation: ${r.mitigation}`),
+      ];
+      navigator.clipboard.writeText(lines.join('\n'))
+        .then(() => toast('Copied to clipboard', 'success'))
+        .catch(() => toast('Copy failed — try selecting manually', 'error'));
+    });
+    const closeBtnFooter = h('button', 'btn btn-primary', 'Close');
+    closeBtnFooter.addEventListener('click', () => overlay.classList.add('hidden'));
+    footer.appendChild(copyBtn);
+    footer.appendChild(closeBtnFooter);
+    overlay.appendChild(footer);
+  }
+
   // ── Company research ──────────────────────────────────────────────────────────
 
   async function runCompanyResearch(acc, btn, fieldsWrap, rebuildFields) {
@@ -3187,9 +3559,15 @@ Return a clear 2–3 sentence professional summary suitable for a sales team bri
     headerLeft.appendChild(titleBlock);
     hdr.appendChild(headerLeft);
 
+    const headerActions = h('div', '');
+    headerActions.style.cssText = 'display:flex;gap:0.5rem;align-items:center;';
+    const drCoachBtn = h('button', 'btn btn-primary btn-sm', '🧠 Deal Coach');
+    drCoachBtn.addEventListener('click', () => { overlay.classList.add('hidden'); openDealCoach(); });
     const closeBtn = h('button', 'btn btn-ghost', '✕ Close');
     closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
-    hdr.appendChild(closeBtn);
+    headerActions.appendChild(drCoachBtn);
+    headerActions.appendChild(closeBtn);
+    hdr.appendChild(headerActions);
     overlay.appendChild(hdr);
 
     // ── Health bar ──
